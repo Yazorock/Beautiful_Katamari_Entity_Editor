@@ -58,9 +58,10 @@ class KatamariEditor:
         self.size_filter_enabled = tk.BooleanVar(value=False)
         
         self.is_dragging = False
-        self.drag_start = None 
+        self.drag_start = None
         self.rect_patch = None
         self.active_ax = None
+        self.drag_initial_positions = {}  # Store initial positions when dragging in DRAG mode
 
         self.slice_axis = tk.StringVar(value="None")
         self.slice_depth = tk.DoubleVar(value=0.0)
@@ -377,7 +378,7 @@ class KatamariEditor:
         tk.Button(self.viz_row2, text="⊙ Zoom Fit", command=self.auto_zoom_to_fit, bg="#4CAF50", fg="white", font=("Arial", 8, "bold")).pack(side=tk.LEFT, padx=5)
 
         tk.Label(self.viz_row2, text="| Select:", bg="#ccc").pack(side=tk.LEFT, padx=(10,0))
-        for m in ["NONE", "CLICK", "PAINT"]:
+        for m in ["NONE", "CLICK", "PAINT", "DRAG"]:
             tk.Radiobutton(self.viz_row2, text=m.title(), variable=self.select_mode, value=m, bg="#ccc").pack(side=tk.LEFT)
 
         self.figure = Figure(figsize=(10, 4), dpi=100)
@@ -483,6 +484,147 @@ class KatamariEditor:
                 f.write(f"current_theme={self.current_theme.get()}\n")
         except Exception as e:
             print(f"Error saving preferences: {e}")
+
+    def save_layout(self):
+        """Save current pane layout to a named file"""
+        import tkinter.simpledialog as simpledialog
+        import os
+
+        # Ask for layout name
+        layout_name = simpledialog.askstring("Save Layout", "Enter a name for this layout:")
+        if not layout_name:
+            return
+
+        # Create layouts directory if it doesn't exist
+        layouts_dir = os.path.join(os.path.dirname(__file__), 'layouts')
+        if not os.path.exists(layouts_dir):
+            os.makedirs(layouts_dir)
+
+        # Save layout to file
+        layout_file = os.path.join(layouts_dir, f"{layout_name}.layout")
+        try:
+            with open(layout_file, 'w') as f:
+                # Save panel visibility
+                f.write(f"show_batch={self.show_batch.get()}\n")
+                f.write(f"show_pos_ops={self.show_pos_ops.get()}\n")
+                f.write(f"show_plane={self.show_plane.get()}\n")
+                f.write(f"show_size_filter={self.show_size_filter.get()}\n")
+                f.write(f"show_sort={self.show_sort.get()}\n")
+                f.write(f"show_slice={self.show_slice.get()}\n")
+                f.write(f"show_quat={self.show_quat.get()}\n")
+                f.write(f"show_pattern={self.show_pattern.get()}\n")
+
+                # Save panel positions
+                f.write(f"batch_side={self.batch_side.get()}\n")
+                f.write(f"pos_ops_side={self.pos_ops_side.get()}\n")
+                f.write(f"plane_side={self.plane_side.get()}\n")
+                f.write(f"size_filter_side={self.size_filter_side.get()}\n")
+                f.write(f"sort_side={self.sort_side.get()}\n")
+                f.write(f"slice_side={self.slice_side.get()}\n")
+                f.write(f"quat_side={self.quat_side.get()}\n")
+                f.write(f"pattern_side={self.pattern_side.get()}\n")
+
+            messagebox.showinfo("Success", f"Layout '{layout_name}' saved successfully!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save layout: {e}")
+
+    def load_layout(self):
+        """Load a saved pane layout"""
+        import os
+
+        # Get list of saved layouts
+        layouts_dir = os.path.join(os.path.dirname(__file__), 'layouts')
+        if not os.path.exists(layouts_dir):
+            messagebox.showinfo("No Layouts", "No saved layouts found.")
+            return
+
+        layout_files = [f[:-7] for f in os.listdir(layouts_dir) if f.endswith('.layout')]
+        if not layout_files:
+            messagebox.showinfo("No Layouts", "No saved layouts found.")
+            return
+
+        # Show dialog to select layout
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Load Layout")
+        dialog.geometry("300x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        tk.Label(dialog, text="Select a layout to load:", pady=10).pack()
+
+        listbox = tk.Listbox(dialog, font=("Arial", 10))
+        listbox.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        for layout_name in sorted(layout_files):
+            listbox.insert(tk.END, layout_name)
+
+        def load_selected():
+            selection = listbox.curselection()
+            if not selection:
+                messagebox.showwarning("No Selection", "Please select a layout to load.")
+                return
+
+            layout_name = listbox.get(selection[0])
+            layout_file = os.path.join(layouts_dir, f"{layout_name}.layout")
+
+            try:
+                with open(layout_file, 'r') as f:
+                    prefs = {}
+                    for line in f:
+                        if '=' in line:
+                            key, value = line.strip().split('=', 1)
+                            prefs[key] = value
+
+                    # Load panel visibility
+                    if 'show_batch' in prefs: self.show_batch.set(prefs['show_batch'] == 'True')
+                    if 'show_pos_ops' in prefs: self.show_pos_ops.set(prefs['show_pos_ops'] == 'True')
+                    if 'show_plane' in prefs: self.show_plane.set(prefs['show_plane'] == 'True')
+                    if 'show_size_filter' in prefs: self.show_size_filter.set(prefs['show_size_filter'] == 'True')
+                    if 'show_sort' in prefs: self.show_sort.set(prefs['show_sort'] == 'True')
+                    if 'show_slice' in prefs: self.show_slice.set(prefs['show_slice'] == 'True')
+                    if 'show_quat' in prefs: self.show_quat.set(prefs['show_quat'] == 'True')
+                    if 'show_pattern' in prefs: self.show_pattern.set(prefs['show_pattern'] == 'True')
+
+                    # Load panel positions
+                    if 'batch_side' in prefs: self.batch_side.set(prefs['batch_side'])
+                    if 'pos_ops_side' in prefs: self.pos_ops_side.set(prefs['pos_ops_side'])
+                    if 'plane_side' in prefs: self.plane_side.set(prefs['plane_side'])
+                    if 'size_filter_side' in prefs: self.size_filter_side.set(prefs['size_filter_side'])
+                    if 'sort_side' in prefs: self.sort_side.set(prefs['sort_side'])
+                    if 'slice_side' in prefs: self.slice_side.set(prefs['slice_side'])
+                    if 'quat_side' in prefs: self.quat_side.set(prefs['quat_side'])
+                    if 'pattern_side' in prefs: self.pattern_side.set(prefs['pattern_side'])
+
+                    # Refresh UI to apply changes
+                    self.refresh_ui_layout()
+
+                dialog.destroy()
+                messagebox.showinfo("Success", f"Layout '{layout_name}' loaded successfully!")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load layout: {e}")
+
+        def delete_selected():
+            selection = listbox.curselection()
+            if not selection:
+                messagebox.showwarning("No Selection", "Please select a layout to delete.")
+                return
+
+            layout_name = listbox.get(selection[0])
+            if messagebox.askyesno("Confirm Delete", f"Delete layout '{layout_name}'?"):
+                layout_file = os.path.join(layouts_dir, f"{layout_name}.layout")
+                try:
+                    os.remove(layout_file)
+                    listbox.delete(selection[0])
+                    messagebox.showinfo("Deleted", f"Layout '{layout_name}' deleted.")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to delete layout: {e}")
+
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        tk.Button(button_frame, text="Load", command=load_selected, bg="#4CAF50", fg="white").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        tk.Button(button_frame, text="Delete", command=delete_selected, bg="#F44336", fg="white").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        tk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
 
     def on_closing(self):
         """Handle window closing"""
@@ -813,11 +955,17 @@ class KatamariEditor:
         visibility_menu.add_checkbutton(label="Pattern Placer", variable=self.show_pattern, command=self.refresh_ui_layout)
         
         view_menu.add_separator()
-        
+
+        # Layout save/load
+        view_menu.add_command(label="Save Layout As...", command=self.save_layout)
+        view_menu.add_command(label="Load Layout...", command=self.load_layout)
+
+        view_menu.add_separator()
+
         # Add Auto-Zoom button
         view_menu.add_command(label="Auto-Zoom to Fit All", command=self.auto_zoom_to_fit, accelerator="Ctrl+0")
         self.root.bind('<Control-Key-0>', lambda e: self.auto_zoom_to_fit())
-        
+
         view_menu.add_separator()
         
         tools = [
@@ -973,7 +1121,8 @@ class KatamariEditor:
         tk.Button(sort_frame, text="Size", command=lambda: self.sort_entities("SIZE")).grid(row=1, column=1, sticky="ew")
         tk.Button(sort_frame, text="Atk", command=lambda: self.sort_entities("ATK")).grid(row=2, column=0, sticky="ew")
         tk.Button(sort_frame, text="Mov", command=lambda: self.sort_entities("MOV")).grid(row=2, column=1, sticky="ew")
-        tk.Button(sort_frame, text="RESET", command=self.reset_sort).grid(row=3, column=0, columnspan=2, sticky="ew")
+        tk.Button(sort_frame, text="ID #", command=lambda: self.sort_entities("ID")).grid(row=3, column=0, sticky="ew")
+        tk.Button(sort_frame, text="RESET", command=self.reset_sort).grid(row=3, column=1, sticky="ew")
         sort_frame.columnconfigure(0, weight=1)
         sort_frame.columnconfigure(1, weight=1)
         return sort_frame
@@ -1501,7 +1650,42 @@ class KatamariEditor:
         tk.Button(rotate_row, text="X", command=lambda: self.rotate_positions("x"), bg="#9C27B0", fg="white", width=6).pack(side=tk.LEFT, padx=1)
         tk.Button(rotate_row, text="Y", command=lambda: self.rotate_positions("y"), bg="#9C27B0", fg="white", width=6).pack(side=tk.LEFT, padx=1)
         tk.Button(rotate_row, text="Z", command=lambda: self.rotate_positions("z"), bg="#9C27B0", fg="white", width=6).pack(side=tk.LEFT, padx=1)
-        
+
+        # Scatter section
+        scatter_frame = tk.LabelFrame(ops_frame, text="Scatter Positions", bg="#e8f4f8", padx=3, pady=3)
+        scatter_frame.pack(fill=tk.X, pady=2)
+
+        tk.Label(scatter_frame, text="Randomize entity positions by adjustable amounts",
+                bg="#e8f4f8", font=("Arial", 8, "italic")).pack(anchor="w", pady=(0,5))
+
+        # X scatter slider
+        x_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
+        x_scatter_row.pack(fill=tk.X, pady=1)
+        tk.Label(x_scatter_row, text="X Range:", bg="#e8f4f8", width=10).pack(side=tk.LEFT)
+        self.scatter_x = tk.DoubleVar(value=5.0)
+        tk.Scale(x_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
+                variable=self.scatter_x, showvalue=1, bg="#e8f4f8", length=150).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Y scatter slider
+        y_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
+        y_scatter_row.pack(fill=tk.X, pady=1)
+        tk.Label(y_scatter_row, text="Y Range:", bg="#e8f4f8", width=10).pack(side=tk.LEFT)
+        self.scatter_y = tk.DoubleVar(value=5.0)
+        tk.Scale(y_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
+                variable=self.scatter_y, showvalue=1, bg="#e8f4f8", length=150).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Z scatter slider
+        z_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
+        z_scatter_row.pack(fill=tk.X, pady=1)
+        tk.Label(z_scatter_row, text="Z Range:", bg="#e8f4f8", width=10).pack(side=tk.LEFT)
+        self.scatter_z = tk.DoubleVar(value=5.0)
+        tk.Scale(z_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
+                variable=self.scatter_z, showvalue=1, bg="#e8f4f8", length=150).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Apply scatter button
+        tk.Button(scatter_frame, text="APPLY SCATTER", command=self.scatter_positions,
+                 bg="#4CAF50", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=(5,0))
+
         return ops_frame
 
     def build_batch_editor(self, parent):
@@ -1661,6 +1845,40 @@ class KatamariEditor:
         self.plot_all()
         self.highlight_pts()
         messagebox.showinfo("Success", f"Rotated {len(self.selected_indices)} entities {angle_deg}° around {axis.upper()}-axis.")
+
+    def scatter_positions(self):
+        """Randomly scatter selected entities within specified ranges"""
+        if not self.selected_indices:
+            messagebox.showwarning("Selection", "Select entities to scatter.")
+            return
+
+        import random
+
+        # Get scatter ranges from sliders
+        x_range = self.scatter_x.get()
+        y_range = self.scatter_y.get()
+        z_range = self.scatter_z.get()
+
+        self.save_undo_state(f"Scatter Positions (X:±{x_range}, Y:±{y_range}, Z:±{z_range})")
+
+        # Apply random offsets to each selected entity
+        for idx in self.selected_indices:
+            # Generate random offsets within the specified ranges
+            # Using uniform distribution from -range to +range
+            if x_range > 0:
+                self.entities[idx]['x'] += random.uniform(-x_range, x_range)
+            if y_range > 0:
+                self.entities[idx]['y'] += random.uniform(-y_range, y_range)
+            if z_range > 0:
+                self.entities[idx]['z'] += random.uniform(-z_range, z_range)
+
+            # Sync the raw data
+            self._sync_entity_raw(self.entities[idx])
+
+        self.update_editor_fields()
+        self.plot_all()
+        self.highlight_pts()
+        messagebox.showinfo("Success", f"Scattered {len(self.selected_indices)} entities with ranges X:±{x_range}, Y:±{y_range}, Z:±{z_range}.")
 
     def create_plane_from_selection(self):
         """Create a plane from 3+ selected entities using best-fit"""
@@ -2442,22 +2660,46 @@ class KatamariEditor:
     def on_mouse_down(self, event):
         if not event.inaxes or self.toolbar.mode != "": return
         mode = self.select_mode.get()
-        
+
         # Alt+Click to add waypoint at mouse position
         if event.key == 'alt' and event.button == 1 and event.inaxes == self.ax3d:
             self.add_waypoint_from_click(event)
             return
-        
+
         if mode == "CLICK" or mode == "NONE": return
         if event.button != 1: return
         self.is_dragging = True; self.drag_start = (event.xdata, event.ydata); self.active_ax = event.inaxes
-        if mode == "PAINT": self.do_paint_select(event)
+
+        if mode == "PAINT":
+            self.do_paint_select(event)
+        elif mode == "DRAG":
+            # Store initial positions of selected entities
+            if self.selected_indices:
+                self.save_undo_state("Drag Entities")
+                self.drag_initial_positions = {}
+                for idx in self.selected_indices:
+                    e = self.entities[idx]
+                    self.drag_initial_positions[idx] = (e['x'], e['y'], e['z'])
     
     def on_mouse_move(self, event):
         if not self.is_dragging or not event.inaxes or event.inaxes != self.active_ax: return
-        if self.select_mode.get() == "PAINT": self.do_paint_select(event)
+        mode = self.select_mode.get()
+        if mode == "PAINT":
+            self.do_paint_select(event)
+        elif mode == "DRAG":
+            self.do_drag_move(event)
 
     def on_mouse_up(self, event):
+        mode = self.select_mode.get()
+        if mode == "DRAG" and self.is_dragging and self.drag_initial_positions:
+            # Sync all dragged entities' raw data
+            for idx in self.selected_indices:
+                if idx in self.entities:
+                    self._sync_entity_raw(self.entities[idx])
+            self.drag_initial_positions = {}
+            if hasattr(self, 'drag_screen_start'):
+                delattr(self, 'drag_screen_start')
+            self.update_editor_fields()
         self.is_dragging = False
 
     def do_paint_select(self, event):
@@ -2473,6 +2715,75 @@ class KatamariEditor:
                     if ctrl and midx in self.selected_indices: self.selected_indices.remove(midx); changed = True
                     elif not ctrl and midx not in self.selected_indices: self.selected_indices.append(midx); changed = True
         if changed: self.sync_selection_ui()
+
+    def do_drag_move(self, event):
+        """Handle dragging entities to move them in 3D space"""
+        if not self.drag_start or not self.drag_initial_positions:
+            return
+
+        if event.inaxes == self.ax3d and event.xdata is not None and event.ydata is not None:
+            # Get the current view transformation matrix
+            proj_matrix = self.ax3d.get_proj()
+
+            # For 3D view, we need to convert screen delta to world delta
+            # We'll use a simple approach: calculate the scale based on axis limits
+            if self.selected_indices and self.selected_indices[0] in self.drag_initial_positions:
+                # Get the axes limits to calculate scale
+                xlim = self.ax3d.get_xlim()
+                ylim = self.ax3d.get_ylim()
+                zlim = self.ax3d.get_zlim()
+
+                # Get figure size in pixels
+                bbox = self.ax3d.get_window_extent()
+                width_px = bbox.width
+                height_px = bbox.height
+
+                if width_px > 0 and height_px > 0:
+                    # Calculate screen space movement in pixels
+                    # Note: drag_start was stored as (xdata, ydata) from the initial event
+                    # For 3D, we need to work with pixel coordinates instead
+
+                    # Get reference entity (first selected)
+                    ref_idx = self.selected_indices[0]
+                    ref_pos = self.drag_initial_positions[ref_idx]
+
+                    # Project the reference position to screen at start
+                    x2d_start, y2d_start, _ = proj3d.proj_transform(-ref_pos[0], ref_pos[2], ref_pos[1], proj_matrix)
+                    screen_start = self.ax3d.transData.transform((x2d_start, y2d_start))
+
+                    # Get current mouse position in screen coordinates
+                    if hasattr(event, 'x') and hasattr(event, 'y'):
+                        # Calculate pixel delta from the stored screen start position
+                        if not hasattr(self, 'drag_screen_start'):
+                            self.drag_screen_start = screen_start
+
+                        dx_pixel = event.x - self.drag_screen_start[0]
+                        dy_pixel = event.y - self.drag_screen_start[1]
+
+                        # Estimate world space scale (units per pixel)
+                        x_scale = (xlim[1] - xlim[0]) / width_px
+                        z_scale = (zlim[1] - zlim[0]) / height_px
+
+                        # Convert pixel movement to world movement
+                        # In the display: X-axis is negated world X, Y-axis is world Z, Z-axis is world Y
+                        dx_world = -dx_pixel * x_scale * 0.5  # Negative because X is negated in display
+                        dz_world = -dy_pixel * z_scale * 0.5  # Vertical screen movement affects Z
+
+                        # Apply movement to all selected entities
+                        for idx in self.selected_indices:
+                            if idx in self.drag_initial_positions:
+                                init_pos = self.drag_initial_positions[idx]
+                                self.entities[idx]['x'] = init_pos[0] + dx_world
+                                self.entities[idx]['z'] = init_pos[2] + dz_world
+                                # Keep Y constant for horizontal movement
+                                # If shift is held, allow Y movement
+                                if event.key == 'shift':
+                                    dy_world = -dy_pixel * z_scale * 0.5
+                                    self.entities[idx]['y'] = init_pos[1] + dy_world
+
+                        # Redraw
+                        self.plot_all()
+                        self.highlight_pts()
 
     def sync_selection_ui(self):
         self.is_updating_ui = True
@@ -2509,6 +2820,7 @@ class KatamariEditor:
             if crit == "SIZE": return info.get('size_val', 0)
             if crit == "ATK": return int(e.get('atk', 0))
             if crit == "MOV": return int(e.get('mov', 0))
+            if crit == "ID": return int(e['id'])  # Sort by entity ID number
             return e['id']
         self.display_mapping.sort(key=sk, reverse=self.sort_reverse)
         self.refresh_list()
@@ -2640,10 +2952,11 @@ class KatamariEditor:
         })
         
         if is_primary:
-            self.file_sequence = map_sequence
+            # Create a new list for combined editing (don't share reference with map's file_sequence)
+            self.file_sequence = list(map_sequence)
             self.current_map_name = map_name
         else:
-            # Merge sequences
+            # Merge sequences into combined file_sequence (each map keeps its own separate file_sequence)
             self.file_sequence.extend(map_sequence)
         
         # Update title
