@@ -6,3 +6,5 @@ Also very useful to have the CSV for all entity names and information.  https://
 
 
 Putting an entity that doesn't usually exist in the level usually crashes the game.
+
+Also a d04 injector so you don't have to manually edit your .dat file
