@@ -18,7 +18,7 @@ matplotlib.use("TkAgg")
 class KatamariEditor:
     def __init__(self, root):
         self.root = root
-        self.root.title("Katamari Editor 19.1 - Bug Fixes")
+        self.root.title("Katamari Editor 19.3 - Multi-Map Support")
         self.root.geometry("1600x1000")
 
         # --- Undo System ---
@@ -33,6 +33,10 @@ class KatamariEditor:
         self.highlights = [None, None, None, None]
         self.is_updating_ui = False 
         
+        # Multi-map support
+        self.loaded_maps = []  # List of dicts: {'name', 'entities', 'file_sequence', 'hue_offset'}
+        self.current_map_name = None 
+        
         self.pos_buffer = {"all": None, "x": None, "y": None, "z": None}
         self.offset_mode = tk.BooleanVar(value=False)
         self.dirty_fields = set()
@@ -46,7 +50,7 @@ class KatamariEditor:
         self.entity_opacity = tk.DoubleVar(value=0.4)
         self.brush_size = tk.DoubleVar(value=25.0)
         self.color_radius = tk.DoubleVar(value=1.0) 
-        self.depth_shading = tk.BooleanVar(value=True)
+        self.depth_shading = tk.BooleanVar(value=False)
         self.use_size_scaling = tk.BooleanVar(value=False)
         
         self.size_filter_min = tk.DoubleVar(value=0.0)
@@ -63,6 +67,9 @@ class KatamariEditor:
         self.slice_thickness = tk.DoubleVar(value=20.0)
         self.axis_bounds = {'x':(-100,100), 'y':(-100,100), 'z':(-100,100)} 
         self.pos_sliders = []
+        
+        # User-configurable position slider limits
+        self.pos_limit = tk.DoubleVar(value=333.0)
 
         self.batch_side = tk.StringVar(value="Right")
         self.pos_ops_side = tk.StringVar(value="Right")
@@ -71,17 +78,246 @@ class KatamariEditor:
         self.sort_side = tk.StringVar(value="Left")
         self.slice_side = tk.StringVar(value="Left")
         self.quat_side = tk.StringVar(value="Right")
+        self.pattern_side = tk.StringVar(value="Right")
         
         # Visibility toggles for each panel
         self.show_batch = tk.BooleanVar(value=True)
         self.show_pos_ops = tk.BooleanVar(value=True)
         self.show_plane = tk.BooleanVar(value=True)
-        self.show_size_filter = tk.BooleanVar(value=True)
-        self.show_sort = tk.BooleanVar(value=True)
-        self.show_slice = tk.BooleanVar(value=True)
+        self.show_size_filter = tk.BooleanVar(value=False)  # Hidden by default
+        self.show_sort = tk.BooleanVar(value=False)  # Hidden by default
+        self.show_slice = tk.BooleanVar(value=False)  # Hidden by default
         self.show_quat = tk.BooleanVar(value=True)
+        self.show_pattern = tk.BooleanVar(value=True)
+        
+        # Theme system
+        self.current_theme = tk.StringVar(value="Light")
+        self.dark_theme = tk.BooleanVar(value=False)  # Legacy compatibility
+        
+        # Comprehensive theme definitions with rich color palettes
+        self.themes = {
+            "Light": {
+                "name": "Light",
+                "bg": "#f5f5f5", "fg": "#1a1a1a", "accent": "#0066cc",
+                "panel_bg": "#e8e8e8", "panel_fg": "#1a1a1a",
+                "frame_bg": "#dcdcdc", "labelframe_bg": "#e8e8e8",
+                "input_bg": "#ffffff", "input_fg": "#1a1a1a",
+                "button_bg": "#0066cc", "button_fg": "#ffffff",
+                "listbox_bg": "#ffffff", "listbox_fg": "#1a1a1a",
+                "listbox_select_bg": "#0066cc", "listbox_select_fg": "#ffffff",
+                "select_bg": "#0066cc", "select_fg": "#ffffff",
+                "border": "#b8b8b8", "sash": "#a0a0a0",
+                "info_bg": "#1e1e1e", "info_fg": "#50fa7b",
+                "toolbar_bg": "#e0e0e0",
+                "menu_bg": "#f5f5f5", "menu_fg": "#1a1a1a",
+                "graph_bg": "#fafafa", "graph_pane": "#f0f0f0",
+                "graph_grid": "#d0d0d0", "graph_text": "#404040", "graph_pane_alpha": 1.0,
+                "scrollbar_bg": "#d0d0d0", "scrollbar_fg": "#909090",
+                "highlight_color": "#ff6b6b",
+            },
+            "Obsidian": {
+                "name": "Obsidian",
+                "bg": "#1e1e2e", "fg": "#cdd6f4", "accent": "#89b4fa",
+                "panel_bg": "#181825", "panel_fg": "#cdd6f4",
+                "frame_bg": "#11111b", "labelframe_bg": "#181825",
+                "input_bg": "#313244", "input_fg": "#cdd6f4",
+                "button_bg": "#74c7ec", "button_fg": "#11111b",
+                "listbox_bg": "#11111b", "listbox_fg": "#cdd6f4",
+                "listbox_select_bg": "#74c7ec", "listbox_select_fg": "#11111b",
+                "select_bg": "#74c7ec", "select_fg": "#11111b",
+                "border": "#45475a", "sash": "#6c7086",
+                "info_bg": "#11111b", "info_fg": "#a6e3a1",
+                "toolbar_bg": "#181825",
+                "menu_bg": "#1e1e2e", "menu_fg": "#cdd6f4",
+                "graph_bg": "#11111b", "graph_pane": "#1e1e2e",
+                "graph_grid": "#45475a", "graph_text": "#bac2de", "graph_pane_alpha": 0.95,
+                "scrollbar_bg": "#313244", "scrollbar_fg": "#6c7086",
+                "highlight_color": "#f38ba8",
+            },
+            "Olive Grove": {
+                "name": "Olive Grove",
+                "bg": "#1d2a1d", "fg": "#d8e4d0", "accent": "#9dc88d",
+                "panel_bg": "#243024", "panel_fg": "#d8e4d0",
+                "frame_bg": "#1a251a", "labelframe_bg": "#243024",
+                "input_bg": "#2d3c2d", "input_fg": "#e4f0dc",
+                "button_bg": "#6b9b5b", "button_fg": "#ffffff",
+                "listbox_bg": "#161f16", "listbox_fg": "#d8e4d0",
+                "listbox_select_bg": "#6b9b5b", "listbox_select_fg": "#ffffff",
+                "select_bg": "#6b9b5b", "select_fg": "#ffffff",
+                "border": "#3d5030", "sash": "#4a6040",
+                "info_bg": "#141c14", "info_fg": "#b8e8a0",
+                "toolbar_bg": "#243024",
+                "menu_bg": "#1d2a1d", "menu_fg": "#d8e4d0",
+                "graph_bg": "#141c14", "graph_pane": "#1d2a1d",
+                "graph_grid": "#385830", "graph_text": "#a8c8a0", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#2d3c2d", "scrollbar_fg": "#4a6040",
+                "highlight_color": "#f0e060",
+            },
+            "Deep Ocean": {
+                "name": "Deep Ocean",
+                "bg": "#0c1829", "fg": "#c4d4e8", "accent": "#64b5f6",
+                "panel_bg": "#102030", "panel_fg": "#c4d4e8",
+                "frame_bg": "#0a1420", "labelframe_bg": "#102030",
+                "input_bg": "#1a3048", "input_fg": "#d0e0f0",
+                "button_bg": "#4090d0", "button_fg": "#ffffff",
+                "listbox_bg": "#081018", "listbox_fg": "#c4d4e8",
+                "listbox_select_bg": "#4090d0", "listbox_select_fg": "#ffffff",
+                "select_bg": "#4090d0", "select_fg": "#ffffff",
+                "border": "#204060", "sash": "#305080",
+                "info_bg": "#060c14", "info_fg": "#70e0ff",
+                "toolbar_bg": "#102030",
+                "menu_bg": "#0c1829", "menu_fg": "#c4d4e8",
+                "graph_bg": "#060c14", "graph_pane": "#0c1829",
+                "graph_grid": "#204868", "graph_text": "#8090b0", "graph_pane_alpha": 0.94,
+                "scrollbar_bg": "#1a3048", "scrollbar_fg": "#305080",
+                "highlight_color": "#ff9e64",
+            },
+            "Crimson Night": {
+                "name": "Crimson Night",
+                "bg": "#1c0c14", "fg": "#f0d8e0", "accent": "#e85080",
+                "panel_bg": "#281420", "panel_fg": "#f0d8e0",
+                "frame_bg": "#180a10", "labelframe_bg": "#281420",
+                "input_bg": "#382028", "input_fg": "#f4e0e8",
+                "button_bg": "#c04060", "button_fg": "#ffffff",
+                "listbox_bg": "#140810", "listbox_fg": "#f0d8e0",
+                "listbox_select_bg": "#c04060", "listbox_select_fg": "#ffffff",
+                "select_bg": "#c04060", "select_fg": "#ffffff",
+                "border": "#502838", "sash": "#683848",
+                "info_bg": "#100608", "info_fg": "#ff80a0",
+                "toolbar_bg": "#281420",
+                "menu_bg": "#1c0c14", "menu_fg": "#f0d8e0",
+                "graph_bg": "#100608", "graph_pane": "#1c0c14",
+                "graph_grid": "#582840", "graph_text": "#c090a0", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#382028", "scrollbar_fg": "#683848",
+                "highlight_color": "#50c0ff",
+            },
+            "Burnished Oak": {
+                "name": "Burnished Oak",
+                "bg": "#201810", "fg": "#f0e4d4", "accent": "#d8a050",
+                "panel_bg": "#2c2018", "panel_fg": "#f0e4d4",
+                "frame_bg": "#1c1410", "labelframe_bg": "#2c2018",
+                "input_bg": "#3c2c20", "input_fg": "#f4ece0",
+                "button_bg": "#a07020", "button_fg": "#ffffff",
+                "listbox_bg": "#181008", "listbox_fg": "#f0e4d4",
+                "listbox_select_bg": "#a07020", "listbox_select_fg": "#ffffff",
+                "select_bg": "#a07020", "select_fg": "#ffffff",
+                "border": "#504028", "sash": "#685838",
+                "info_bg": "#140c08", "info_fg": "#ffc860",
+                "toolbar_bg": "#2c2018",
+                "menu_bg": "#201810", "menu_fg": "#f0e4d4",
+                "graph_bg": "#140c08", "graph_pane": "#201810",
+                "graph_grid": "#584830", "graph_text": "#b8a080", "graph_pane_alpha": 0.92,
+                "scrollbar_bg": "#3c2c20", "scrollbar_fg": "#685838",
+                "highlight_color": "#70d0a0",
+            },
+            "Amethyst": {
+                "name": "Amethyst",
+                "bg": "#18101e", "fg": "#e8dcf4", "accent": "#c0a0d8",
+                "panel_bg": "#201828", "panel_fg": "#e8dcf4",
+                "frame_bg": "#140c18", "labelframe_bg": "#201828",
+                "input_bg": "#2c2038", "input_fg": "#f0e8f8",
+                "button_bg": "#8860a8", "button_fg": "#ffffff",
+                "listbox_bg": "#100810", "listbox_fg": "#e8dcf4",
+                "listbox_select_bg": "#8860a8", "listbox_select_fg": "#ffffff",
+                "select_bg": "#8860a8", "select_fg": "#ffffff",
+                "border": "#403050", "sash": "#584068",
+                "info_bg": "#0c0810", "info_fg": "#e0b0f0",
+                "toolbar_bg": "#201828",
+                "menu_bg": "#18101e", "menu_fg": "#e8dcf4",
+                "graph_bg": "#0c0810", "graph_pane": "#18101e",
+                "graph_grid": "#483858", "graph_text": "#a890b8", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#2c2038", "scrollbar_fg": "#584068",
+                "highlight_color": "#80d8a0",
+            },
+            "Void": {
+                "name": "Void",
+                "bg": "#000000", "fg": "#808080", "accent": "#00ff88",
+                "panel_bg": "#0a0a0a", "panel_fg": "#909090",
+                "frame_bg": "#050505", "labelframe_bg": "#0a0a0a",
+                "input_bg": "#141414", "input_fg": "#a0a0a0",
+                "button_bg": "#003020", "button_fg": "#00ff88",
+                "listbox_bg": "#050505", "listbox_fg": "#888888",
+                "listbox_select_bg": "#004030", "listbox_select_fg": "#00ff88",
+                "select_bg": "#004030", "select_fg": "#00ff88",
+                "border": "#1a1a1a", "sash": "#252525",
+                "info_bg": "#050505", "info_fg": "#00ff88",
+                "toolbar_bg": "#0a0a0a",
+                "menu_bg": "#000000", "menu_fg": "#808080",
+                "graph_bg": "#000000", "graph_pane": "#080808",
+                "graph_grid": "#181818", "graph_text": "#484848", "graph_pane_alpha": 0.98,
+                "scrollbar_bg": "#141414", "scrollbar_fg": "#252525",
+                "highlight_color": "#ff0066",
+            },
+            "Solar Flare": {
+                "name": "Solar Flare",
+                "bg": "#1c1208", "fg": "#fff0d8", "accent": "#ffa030",
+                "panel_bg": "#281c10", "panel_fg": "#fff0d8",
+                "frame_bg": "#180e08", "labelframe_bg": "#281c10",
+                "input_bg": "#382818", "input_fg": "#fff4e0",
+                "button_bg": "#d07010", "button_fg": "#ffffff",
+                "listbox_bg": "#140c04", "listbox_fg": "#fff0d8",
+                "listbox_select_bg": "#d07010", "listbox_select_fg": "#ffffff",
+                "select_bg": "#d07010", "select_fg": "#ffffff",
+                "border": "#503818", "sash": "#684820",
+                "info_bg": "#100804", "info_fg": "#ffc050",
+                "toolbar_bg": "#281c10",
+                "menu_bg": "#1c1208", "menu_fg": "#fff0d8",
+                "graph_bg": "#100804", "graph_pane": "#1c1208",
+                "graph_grid": "#584020", "graph_text": "#c09060", "graph_pane_alpha": 0.92,
+                "scrollbar_bg": "#382818", "scrollbar_fg": "#684820",
+                "highlight_color": "#60c0ff",
+            },
+            "Sakura": {
+                "name": "Sakura",
+                "bg": "#1e1418", "fg": "#f8e8f0", "accent": "#ffb7c5",
+                "panel_bg": "#281c22", "panel_fg": "#f8e8f0",
+                "frame_bg": "#1a1014", "labelframe_bg": "#281c22",
+                "input_bg": "#38282e", "input_fg": "#fff0f4",
+                "button_bg": "#d87088", "button_fg": "#ffffff",
+                "listbox_bg": "#140c10", "listbox_fg": "#f8e8f0",
+                "listbox_select_bg": "#d87088", "listbox_select_fg": "#ffffff",
+                "select_bg": "#d87088", "select_fg": "#ffffff",
+                "border": "#503848", "sash": "#684858",
+                "info_bg": "#100810", "info_fg": "#ffb0c0",
+                "toolbar_bg": "#281c22",
+                "menu_bg": "#1e1418", "menu_fg": "#f8e8f0",
+                "graph_bg": "#100810", "graph_pane": "#1e1418",
+                "graph_grid": "#584050", "graph_text": "#c0a0b0", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#38282e", "scrollbar_fg": "#684858",
+                "highlight_color": "#90e0c0",
+            },
+            "Northern Lights": {
+                "name": "Northern Lights",
+                "bg": "#0a1018", "fg": "#d0e8f0", "accent": "#80ffb0",
+                "panel_bg": "#101820", "panel_fg": "#d0e8f0",
+                "frame_bg": "#080c14", "labelframe_bg": "#101820",
+                "input_bg": "#182430", "input_fg": "#e0f0f8",
+                "button_bg": "#40a080", "button_fg": "#ffffff",
+                "listbox_bg": "#060a10", "listbox_fg": "#d0e8f0",
+                "listbox_select_bg": "#40a080", "listbox_select_fg": "#ffffff",
+                "select_bg": "#40a080", "select_fg": "#ffffff",
+                "border": "#284050", "sash": "#385868",
+                "info_bg": "#04080c", "info_fg": "#80ffc0",
+                "toolbar_bg": "#101820",
+                "menu_bg": "#0a1018", "menu_fg": "#d0e8f0",
+                "graph_bg": "#04080c", "graph_pane": "#0a1018",
+                "graph_grid": "#304858", "graph_text": "#80a0b0", "graph_pane_alpha": 0.94,
+                "scrollbar_bg": "#182430", "scrollbar_fg": "#385868",
+                "highlight_color": "#ff80a0",
+            },
+        }
+        
+        # Load saved preferences
+        self.load_preferences()
         
         self.tool_frames = {}
+        
+        # Pattern placer variables
+        self.pattern_type = tk.StringVar(value="Circle")
+        self.pattern_radius = tk.DoubleVar(value=50.0)
+        self.pattern_spacing = tk.DoubleVar(value=10.0)
+        self.pattern_radius_limit = tk.DoubleVar(value=500.0)
+        self.waypoints = []
         
         self.pos_vars = [tk.DoubleVar() for _ in range(3)]
 
@@ -107,33 +343,42 @@ class KatamariEditor:
         self.graph_container = tk.Frame(self.col_mid)
         self.graph_container.pack(fill=tk.BOTH, expand=True, padx=10)
         
-        tool_frame = tk.Frame(self.graph_container, bg="#ccc", pady=2)
-        tool_frame.pack(fill=tk.X)
+        self.tool_frame = tk.Frame(self.graph_container, bg="#ccc", pady=2)
+        self.tool_frame.pack(fill=tk.X)
         
-        viz_row1 = tk.Frame(tool_frame, bg="#ccc")
-        viz_row1.pack(fill=tk.X, pady=1)
+        self.viz_row1 = tk.Frame(self.tool_frame, bg="#ccc")
+        self.viz_row1.pack(fill=tk.X, pady=1)
         
-        tk.Label(viz_row1, text="Color:", bg="#ccc", font=("Arial", 8, "bold")).pack(side=tk.LEFT, padx=5)
+        tk.Label(self.viz_row1, text="Color:", bg="#ccc", font=("Arial", 8, "bold")).pack(side=tk.LEFT, padx=5)
         for m in ["Standard", "XYZ", "Logic", "ID", "Size", "Hierarchy"]:
-            tk.Radiobutton(viz_row1, text=m, variable=self.viz_mode, value=m, bg="#ccc", command=self.plot_all).pack(side=tk.LEFT)
+            tk.Radiobutton(self.viz_row1, text=m, variable=self.viz_mode, value=m, bg="#ccc", command=self.plot_all).pack(side=tk.LEFT)
             
-        tk.Label(viz_row1, text="| Size By CSV:", bg="#ccc", font=("Arial", 8, "bold")).pack(side=tk.LEFT, padx=(10,2))
-        tk.Checkbutton(viz_row1, variable=self.use_size_scaling, bg="#ccc", command=self.plot_all).pack(side=tk.LEFT)
+        tk.Label(self.viz_row1, text="| Size By CSV:", bg="#ccc", font=("Arial", 8, "bold")).pack(side=tk.LEFT, padx=(10,2))
+        tk.Checkbutton(self.viz_row1, variable=self.use_size_scaling, bg="#ccc", command=self.plot_all).pack(side=tk.LEFT)
 
-        viz_row2 = tk.Frame(tool_frame, bg="#ccc")
-        viz_row2.pack(fill=tk.X, pady=1)
+        self.viz_row2 = tk.Frame(self.tool_frame, bg="#ccc")
+        self.viz_row2.pack(fill=tk.X, pady=1)
         
-        tk.Label(viz_row2, text="Rad:", bg="#ccc").pack(side=tk.LEFT, padx=5)
-        tk.Scale(viz_row2, from_=0.1, to=10.0, resolution=0.1, orient=tk.HORIZONTAL, variable=self.color_radius, showvalue=0, bg="#ccc", length=60, command=lambda v: self.plot_all()).pack(side=tk.LEFT)
+        tk.Label(self.viz_row2, text="Rad:", bg="#ccc").pack(side=tk.LEFT, padx=5)
+        tk.Scale(self.viz_row2, from_=0.1, to=10.0, resolution=0.1, orient=tk.HORIZONTAL, variable=self.color_radius, showvalue=0, bg="#ccc", length=60, command=lambda v: self.plot_all()).pack(side=tk.LEFT)
 
-        tk.Label(viz_row2, text="Alpha:", bg="#ccc").pack(side=tk.LEFT, padx=5)
-        tk.Scale(viz_row2, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, variable=self.entity_opacity, showvalue=0, bg="#ccc", length=60, command=lambda v: self.plot_all()).pack(side=tk.LEFT)
+        tk.Label(self.viz_row2, text="Alpha:", bg="#ccc").pack(side=tk.LEFT, padx=5)
+        tk.Scale(self.viz_row2, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, variable=self.entity_opacity, showvalue=0, bg="#ccc", length=60, command=lambda v: self.plot_all()).pack(side=tk.LEFT)
 
-        tk.Checkbutton(viz_row2, text="Depth Fog", variable=self.depth_shading, bg="#ccc", command=self.plot_all).pack(side=tk.LEFT, padx=10)
+        tk.Label(self.viz_row2, text="Hue:", bg="#ccc").pack(side=tk.LEFT, padx=5)
+        self.hue_shift = tk.DoubleVar(value=0.0)
+        self.hue_scale = tk.Scale(self.viz_row2, from_=0.0, to=1.0, resolution=0.05, orient=tk.HORIZONTAL, 
+                                  variable=self.hue_shift, showvalue=0, bg="#ccc", length=60)
+        self.hue_scale.pack(side=tk.LEFT)
+        self.hue_scale.bind("<ButtonRelease-1>", lambda e: self.plot_all())  # Only update on release
 
-        tk.Label(viz_row2, text="| Select:", bg="#ccc").pack(side=tk.LEFT, padx=(10,0))
-        for m in ["CLICK", "PAINT"]:
-            tk.Radiobutton(viz_row2, text=m.title(), variable=self.select_mode, value=m, bg="#ccc").pack(side=tk.LEFT)
+        tk.Checkbutton(self.viz_row2, text="Depth Fog", variable=self.depth_shading, bg="#ccc", command=self.plot_all).pack(side=tk.LEFT, padx=10)
+
+        tk.Button(self.viz_row2, text="⊙ Zoom Fit", command=self.auto_zoom_to_fit, bg="#4CAF50", fg="white", font=("Arial", 8, "bold")).pack(side=tk.LEFT, padx=5)
+
+        tk.Label(self.viz_row2, text="| Select:", bg="#ccc").pack(side=tk.LEFT, padx=(10,0))
+        for m in ["NONE", "CLICK", "PAINT"]:
+            tk.Radiobutton(self.viz_row2, text=m.title(), variable=self.select_mode, value=m, bg="#ccc").pack(side=tk.LEFT)
 
         self.figure = Figure(figsize=(10, 4), dpi=100)
         self.ax3d = self.figure.add_subplot(111, projection='3d')
@@ -147,6 +392,8 @@ class KatamariEditor:
         self.canvas.mpl_connect('button_press_event', self.on_mouse_down)
         self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
         self.canvas.mpl_connect('button_release_event', self.on_mouse_up)
+        
+        # Keyboard bindings
 
         self.entity_listbox = tk.Listbox(self.col_left, font=("Courier", 9), selectmode=tk.EXTENDED, exportselection=False)
         self.entity_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5, side=tk.BOTTOM)
@@ -154,6 +401,340 @@ class KatamariEditor:
 
         self.refresh_ui_layout()
         self.view_state = {'3d': None}
+        self.initial_view_set = False  # Track if initial view has been set
+        
+        # Register cleanup on window close
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Apply initial theme after UI is built
+        self.root.after(100, lambda: self.apply_theme(self.current_theme.get()))
+
+    def load_preferences(self):
+        """Load saved user preferences"""
+        try:
+            import os
+            pref_file = os.path.join(os.path.dirname(__file__), '.katamari_prefs.txt')
+            if os.path.exists(pref_file):
+                with open(pref_file, 'r') as f:
+                    prefs = {}
+                    for line in f:
+                        if '=' in line:
+                            key, value = line.strip().split('=', 1)
+                            prefs[key] = value
+                    
+                    # Load panel visibility
+                    if 'show_batch' in prefs: self.show_batch.set(prefs['show_batch'] == 'True')
+                    if 'show_pos_ops' in prefs: self.show_pos_ops.set(prefs['show_pos_ops'] == 'True')
+                    if 'show_plane' in prefs: self.show_plane.set(prefs['show_plane'] == 'True')
+                    if 'show_size_filter' in prefs: self.show_size_filter.set(prefs['show_size_filter'] == 'True')
+                    if 'show_sort' in prefs: self.show_sort.set(prefs['show_sort'] == 'True')
+                    if 'show_slice' in prefs: self.show_slice.set(prefs['show_slice'] == 'True')
+                    if 'show_quat' in prefs: self.show_quat.set(prefs['show_quat'] == 'True')
+                    if 'show_pattern' in prefs: self.show_pattern.set(prefs['show_pattern'] == 'True')
+                    
+                    # Load panel positions
+                    if 'batch_side' in prefs: self.batch_side.set(prefs['batch_side'])
+                    if 'pos_ops_side' in prefs: self.pos_ops_side.set(prefs['pos_ops_side'])
+                    if 'plane_side' in prefs: self.plane_side.set(prefs['plane_side'])
+                    if 'size_filter_side' in prefs: self.size_filter_side.set(prefs['size_filter_side'])
+                    if 'sort_side' in prefs: self.sort_side.set(prefs['sort_side'])
+                    if 'slice_side' in prefs: self.slice_side.set(prefs['slice_side'])
+                    if 'quat_side' in prefs: self.quat_side.set(prefs['quat_side'])
+                    if 'pattern_side' in prefs: self.pattern_side.set(prefs['pattern_side'])
+                    
+                    # Load theme preference
+                    if 'current_theme' in prefs and prefs['current_theme'] in self.themes:
+                        self.current_theme.set(prefs['current_theme'])
+                        self.dark_theme.set(prefs['current_theme'] != 'Light')
+                    elif 'dark_theme' in prefs:  # Legacy support
+                        if prefs['dark_theme'] == 'True':
+                            self.current_theme.set('Obsidian')
+                            self.dark_theme.set(True)
+        except Exception as e:
+            print(f"Error loading preferences: {e}")
+
+    def save_preferences(self):
+        """Save user preferences"""
+        try:
+            import os
+            pref_file = os.path.join(os.path.dirname(__file__), '.katamari_prefs.txt')
+            with open(pref_file, 'w') as f:
+                # Save panel visibility
+                f.write(f"show_batch={self.show_batch.get()}\n")
+                f.write(f"show_pos_ops={self.show_pos_ops.get()}\n")
+                f.write(f"show_plane={self.show_plane.get()}\n")
+                f.write(f"show_size_filter={self.show_size_filter.get()}\n")
+                f.write(f"show_sort={self.show_sort.get()}\n")
+                f.write(f"show_slice={self.show_slice.get()}\n")
+                f.write(f"show_quat={self.show_quat.get()}\n")
+                f.write(f"show_pattern={self.show_pattern.get()}\n")
+                
+                # Save panel positions
+                f.write(f"batch_side={self.batch_side.get()}\n")
+                f.write(f"pos_ops_side={self.pos_ops_side.get()}\n")
+                f.write(f"plane_side={self.plane_side.get()}\n")
+                f.write(f"size_filter_side={self.size_filter_side.get()}\n")
+                f.write(f"sort_side={self.sort_side.get()}\n")
+                f.write(f"slice_side={self.slice_side.get()}\n")
+                f.write(f"quat_side={self.quat_side.get()}\n")
+                f.write(f"pattern_side={self.pattern_side.get()}\n")
+                
+                # Save theme
+                f.write(f"current_theme={self.current_theme.get()}\n")
+        except Exception as e:
+            print(f"Error saving preferences: {e}")
+
+    def on_closing(self):
+        """Handle window closing"""
+        self.save_preferences()
+        self.root.destroy()
+    
+    def apply_theme(self, theme_name=None):
+        """Apply theme to entire application"""
+        if theme_name:
+            self.current_theme.set(theme_name)
+        
+        theme = self.themes.get(self.current_theme.get(), self.themes["Light"])
+        self.dark_theme.set(theme["name"] != "Light")
+        
+        # Apply to 3D graph
+        self._apply_graph_theme(theme)
+        
+        # Apply to all UI elements
+        self._apply_ui_theme(theme)
+        
+        # Apply to quaternion viewer if exists
+        if hasattr(self, 'quat_fig') and self.quat_fig:
+            self._apply_quat_theme(theme)
+        
+        # Update menu colors
+        self._apply_menu_theme(theme)
+        
+        self.canvas.draw()
+    
+    def _apply_graph_theme(self, theme):
+        """Apply theme to 3D matplotlib graph"""
+        self.figure.patch.set_facecolor(theme["graph_bg"])
+        self.ax3d.set_facecolor(theme["graph_bg"])
+        
+        # Pane colors
+        for axis in [self.ax3d.xaxis, self.ax3d.yaxis, self.ax3d.zaxis]:
+            axis.pane.set_facecolor(theme["graph_pane"])
+            axis.pane.set_alpha(theme["graph_pane_alpha"])
+            axis.pane.set_edgecolor(theme["border"])
+            axis._axinfo['grid']['color'] = theme["graph_grid"]
+            axis.label.set_color(theme["graph_text"])
+        
+        self.ax3d.tick_params(colors=theme["graph_text"], which='both')
+    
+    def _apply_quat_theme(self, theme):
+        """Apply theme to quaternion viewer"""
+        if hasattr(self, 'quat_fig') and self.quat_fig:
+            self.quat_fig.patch.set_facecolor(theme["graph_bg"])
+            if hasattr(self, 'quat_ax') and self.quat_ax:
+                self.quat_ax.set_facecolor(theme["graph_bg"])
+                for axis in [self.quat_ax.xaxis, self.quat_ax.yaxis, self.quat_ax.zaxis]:
+                    axis.pane.set_facecolor(theme["graph_pane"])
+                    axis.label.set_color(theme["graph_text"])
+                self.quat_ax.tick_params(colors=theme["graph_text"], which='both')
+                self.quat_ax.title.set_color(theme["graph_text"])
+            if hasattr(self, 'quat_canvas'):
+                self.quat_canvas.draw()
+    
+    def _apply_menu_theme(self, theme):
+        """Apply theme to menus"""
+        try:
+            menubar = self.root.nametowidget(self.root.cget('menu'))
+            self._theme_menu_recursive(menubar, theme)
+        except:
+            pass
+    
+    def _theme_menu_recursive(self, menu, theme):
+        """Recursively theme menus"""
+        try:
+            menu.configure(
+                bg=theme["menu_bg"],
+                fg=theme["menu_fg"],
+                activebackground=theme["accent"],
+                activeforeground=theme["select_fg"]
+            )
+            # Theme submenus
+            for i in range(menu.index('end') + 1 if menu.index('end') is not None else 0):
+                try:
+                    submenu = menu.nametowidget(menu.entrycget(i, 'menu'))
+                    self._theme_menu_recursive(submenu, theme)
+                except:
+                    pass
+        except:
+            pass
+    
+    def _apply_ui_theme(self, theme):
+        """Apply theme to all UI elements"""
+        # Main window
+        self.root.configure(bg=theme["bg"])
+        
+        # Main pane sash
+        self.main_pane.configure(bg=theme["sash"], sashwidth=6)
+        
+        # Columns
+        self.col_left.configure(bg=theme["panel_bg"])
+        self.col_mid.configure(bg=theme["bg"])
+        self.col_right.configure(bg=theme["panel_bg"])
+        
+        # Info bar
+        self.info_frame.configure(bg=theme["info_bg"])
+        self.lbl_info.configure(bg=theme["info_bg"], fg=theme["info_fg"])
+        
+        # Graph container
+        self.graph_container.configure(bg=theme["bg"])
+        
+        # Toolbar frames
+        if hasattr(self, 'tool_frame'):
+            self.tool_frame.configure(bg=theme["toolbar_bg"])
+        if hasattr(self, 'viz_row1'):
+            self.viz_row1.configure(bg=theme["toolbar_bg"])
+        if hasattr(self, 'viz_row2'):
+            self.viz_row2.configure(bg=theme["toolbar_bg"])
+        
+        # Entity listbox - this is critical
+        self.entity_listbox.configure(
+            bg=theme["listbox_bg"],
+            fg=theme["listbox_fg"],
+            selectbackground=theme["listbox_select_bg"],
+            selectforeground=theme["listbox_select_fg"],
+            highlightbackground=theme["border"],
+            highlightcolor=theme["accent"],
+            font=("Consolas", 9)
+        )
+        
+        # Theme all widgets recursively
+        self._theme_widget_recursive(self.root, theme)
+    
+    def _theme_widget_recursive(self, widget, theme):
+        """Recursively apply theme to widgets"""
+        widget_class = widget.winfo_class()
+        
+        try:
+            if widget_class == 'Frame':
+                current_bg = str(widget.cget('bg')).lower()
+                # Check if it's a toolbar/panel frame
+                if current_bg in ['#ccc', '#ddd', '#eee', '#e8f4f8', '#fff0e6', '#e6ffe6', 
+                                  '#f0f0ff', '#fff5e6', '#f5f5f5', '#e0e0e0', 'systemwindowbackgroundcolor',
+                                  theme.get("toolbar_bg", ""), theme.get("panel_bg", "")]:
+                    widget.configure(bg=theme["panel_bg"])
+                elif widget == self.info_frame:
+                    widget.configure(bg=theme["info_bg"])
+                else:
+                    widget.configure(bg=theme["panel_bg"])
+            
+            elif widget_class == 'Label':
+                # Check parent to determine styling
+                parent = widget.master
+                if parent == self.info_frame:
+                    widget.configure(bg=theme["info_bg"], fg=theme["info_fg"])
+                else:
+                    widget.configure(bg=theme["panel_bg"], fg=theme["panel_fg"])
+            
+            elif widget_class == 'Button':
+                current_bg = str(widget.cget('bg')).lower()
+                # Keep colored action buttons, theme neutral ones
+                if current_bg not in ['#4caf50', '#ff5722', '#2196f3', '#f44336', '#00bcd4', 
+                                       '#9c27b0', '#673ab7', '#e91e63', '#ff9800', '#795548']:
+                    widget.configure(
+                        bg=theme["button_bg"],
+                        fg=theme["button_fg"],
+                        activebackground=theme["accent"],
+                        activeforeground=theme["button_fg"],
+                        highlightbackground=theme["border"]
+                    )
+            
+            elif widget_class == 'Entry':
+                widget.configure(
+                    bg=theme["input_bg"],
+                    fg=theme["input_fg"],
+                    insertbackground=theme["fg"],
+                    highlightbackground=theme["border"],
+                    highlightcolor=theme["accent"],
+                    selectbackground=theme["select_bg"],
+                    selectforeground=theme["select_fg"],
+                    relief=tk.FLAT,
+                    highlightthickness=1
+                )
+            
+            elif widget_class == 'Listbox':
+                widget.configure(
+                    bg=theme["listbox_bg"],
+                    fg=theme["listbox_fg"],
+                    selectbackground=theme["listbox_select_bg"],
+                    selectforeground=theme["listbox_select_fg"],
+                    highlightbackground=theme["border"],
+                    highlightcolor=theme["accent"],
+                    relief=tk.FLAT,
+                    highlightthickness=1
+                )
+            
+            elif widget_class == 'Checkbutton':
+                widget.configure(
+                    bg=theme["panel_bg"],
+                    fg=theme["panel_fg"],
+                    activebackground=theme["panel_bg"],
+                    activeforeground=theme["accent"],
+                    selectcolor=theme["input_bg"],
+                    highlightbackground=theme["panel_bg"]
+                )
+            
+            elif widget_class == 'Radiobutton':
+                widget.configure(
+                    bg=theme["panel_bg"],
+                    fg=theme["panel_fg"],
+                    activebackground=theme["panel_bg"],
+                    activeforeground=theme["accent"],
+                    selectcolor=theme["input_bg"],
+                    highlightbackground=theme["panel_bg"]
+                )
+            
+            elif widget_class == 'Scale':
+                widget.configure(
+                    bg=theme["panel_bg"],
+                    fg=theme["panel_fg"],
+                    troughcolor=theme["input_bg"],
+                    activebackground=theme["accent"],
+                    highlightbackground=theme["panel_bg"],
+                    highlightthickness=0
+                )
+            
+            elif widget_class == 'Labelframe':
+                widget.configure(
+                    bg=theme["labelframe_bg"],
+                    fg=theme["panel_fg"],
+                    highlightbackground=theme["border"]
+                )
+            
+            elif widget_class == 'Text':
+                widget.configure(
+                    bg=theme["input_bg"],
+                    fg=theme["input_fg"],
+                    insertbackground=theme["fg"],
+                    selectbackground=theme["select_bg"],
+                    selectforeground=theme["select_fg"]
+                )
+            
+            elif widget_class == 'PanedWindow':
+                widget.configure(bg=theme["sash"])
+            
+            elif widget_class == 'Scrollbar':
+                widget.configure(
+                    bg=theme["scrollbar_bg"],
+                    troughcolor=theme["frame_bg"],
+                    activebackground=theme["accent"]
+                )
+        
+        except tk.TclError:
+            pass
+        
+        # Recurse to children
+        for child in widget.winfo_children():
+            self._theme_widget_recursive(child, theme)
 
     def save_undo_state(self, action_name="Change"):
         """Save current state to undo stack"""
@@ -187,10 +768,13 @@ class KatamariEditor:
 
     def update_undo_button(self):
         """Update undo button text with stack depth"""
-        if hasattr(self, 'undo_btn'):
+        if hasattr(self, 'undo_btn') and self.undo_btn.winfo_exists():
             count = len(self.undo_stack)
-            self.undo_btn.config(text=f"UNDO ({count})", 
-                                state=tk.NORMAL if count > 0 else tk.DISABLED)
+            try:
+                self.undo_btn.config(text=f"UNDO ({count})", 
+                                    state=tk.NORMAL if count > 0 else tk.DISABLED)
+            except tk.TclError:
+                pass  # Button doesn't exist anymore
 
     def create_menu(self):
         menubar = tk.Menu(self.root)
@@ -200,8 +784,10 @@ class KatamariEditor:
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Load CSV Database...", command=self.load_csv)
         file_menu.add_command(label="Load Map (.dat)...", command=self.load_file)
+        file_menu.add_command(label="Add Another Map (.dat)...", command=self.add_map)
         file_menu.add_separator()
         file_menu.add_command(label="Save Map...", command=self.save_map_file)
+        file_menu.add_command(label="Save All Maps...", command=self.save_all_maps)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.root.quit)
 
@@ -224,6 +810,13 @@ class KatamariEditor:
         visibility_menu.add_checkbutton(label="Size Filter", variable=self.show_size_filter, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Sort Items", variable=self.show_sort, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Filter & Slice", variable=self.show_slice, command=self.refresh_ui_layout)
+        visibility_menu.add_checkbutton(label="Pattern Placer", variable=self.show_pattern, command=self.refresh_ui_layout)
+        
+        view_menu.add_separator()
+        
+        # Add Auto-Zoom button
+        view_menu.add_command(label="Auto-Zoom to Fit All", command=self.auto_zoom_to_fit, accelerator="Ctrl+0")
+        self.root.bind('<Control-Key-0>', lambda e: self.auto_zoom_to_fit())
         
         view_menu.add_separator()
         
@@ -234,7 +827,8 @@ class KatamariEditor:
             ("Plane Manager", self.plane_side),
             ("Size Filter", self.size_filter_side),
             ("Sort Items", self.sort_side),
-            ("Filter & Slice", self.slice_side)
+            ("Filter & Slice", self.slice_side),
+            ("Pattern Placer", self.pattern_side)
         ]
         
         for tool_name, var in tools:
@@ -242,6 +836,34 @@ class KatamariEditor:
             view_menu.add_cascade(label=f"{tool_name} Location", menu=tool_menu)
             for loc in ["Left", "Middle", "Right"]:
                 tool_menu.add_radiobutton(label=loc, variable=var, value=loc, command=self.refresh_ui_layout)
+        
+        # Themes menu
+        themes_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Themes", menu=themes_menu)
+        
+        # Theme icons/descriptions
+        theme_info = {
+            "Light": ("☀️", "Classic bright theme"),
+            "Obsidian": ("🌑", "Modern dark - Catppuccin style"),
+            "Olive Grove": ("🌿", "Forest green serenity"),
+            "Deep Ocean": ("🌊", "Navy blue depths"),
+            "Crimson Night": ("🔥", "Rich reds and burgundy"),
+            "Burnished Oak": ("🌰", "Warm amber wood tones"),
+            "Amethyst": ("💎", "Royal purple elegance"),
+            "Void": ("🕳️", "Pure black cyberpunk"),
+            "Solar Flare": ("☄️", "Fiery orange glow"),
+            "Sakura": ("🌸", "Soft pink blossoms"),
+            "Northern Lights": ("🌌", "Aurora teal glow"),
+        }
+        
+        for theme_name in self.themes.keys():
+            icon, desc = theme_info.get(theme_name, ("🎨", theme_name))
+            themes_menu.add_radiobutton(
+                label=f"{icon}  {theme_name}",
+                variable=self.current_theme,
+                value=theme_name,
+                command=lambda t=theme_name: self.apply_theme(t)
+            )
 
     def refresh_ui_layout(self):
         for frame in self.tool_frames.values():
@@ -265,6 +887,7 @@ class KatamariEditor:
             ("quat", self.quat_side, self.build_quaternion_viewer, self.show_quat),
             ("pos_ops", self.pos_ops_side, self.build_position_operations, self.show_pos_ops),
             ("batch", self.batch_side, self.build_batch_editor, self.show_batch),
+            ("pattern", self.pattern_side, self.build_pattern_placer, self.show_pattern),
         ]
         
         for key, side_var, builder_func, show_var in tools_config:
@@ -275,18 +898,52 @@ class KatamariEditor:
                 self.tool_frames[key].pack(fill=tk.X, padx=10, pady=5 if key == "batch" else 2, side=side_pack)
 
     def build_plane_manager(self, parent):
-        plane_frame = tk.LabelFrame(parent, text="Plane Manager (Max 5)", bg="#ddd", padx=5, pady=5)
+        plane_frame = tk.LabelFrame(parent, text="Plane Manager", bg="#ddd", padx=5, pady=5)
         
-        self.plane_listbox = tk.Listbox(plane_frame, height=5, font=("Courier", 9))
+        # Plane list
+        tk.Label(plane_frame, text="Planes:", bg="#ddd", font=("Arial", 8, "bold")).pack(anchor="w")
+        self.plane_listbox = tk.Listbox(plane_frame, height=4, font=("Courier", 9))
         self.plane_listbox.pack(fill=tk.X, pady=2)
-        self.plane_listbox.bind('<<ListboxSelect>>', lambda e: self.plot_all())
+        self.plane_listbox.bind('<<ListboxSelect>>', lambda e: self.on_plane_select())
         
-        p_btns = tk.Frame(plane_frame, bg="#ddd")
-        p_btns.pack(fill=tk.X)
-        tk.Button(p_btns, text="Add Plane (Select 3-5)", command=self.create_plane_from_selection, bg="#4CAF50", fg="white").pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
-        tk.Button(p_btns, text="Delete", command=self.delete_selected_plane, bg="#f44336", fg="white").pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
+        # Create plane section
+        create_frame = tk.Frame(plane_frame, bg="#ddd")
+        create_frame.pack(fill=tk.X, pady=5)
         
-        tk.Button(plane_frame, text="SNAP SELECTION TO PLANE", command=self.snap_to_plane, bg="#2196F3", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=(4,2))
+        tk.Label(create_frame, text="Create Plane:", bg="#ddd", font=("Arial", 8, "bold")).pack(anchor="w")
+        
+        btn_row1 = tk.Frame(create_frame, bg="#ddd")
+        btn_row1.pack(fill=tk.X)
+        tk.Button(btn_row1, text="From Selection (3+)", command=self.create_plane_from_selection, 
+                  bg="#4CAF50", fg="white").pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
+        tk.Button(btn_row1, text="Delete Plane", command=self.delete_selected_plane, 
+                  bg="#f44336", fg="white").pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
+        
+        # Y-level plane
+        y_frame = tk.Frame(create_frame, bg="#ddd")
+        y_frame.pack(fill=tk.X, pady=2)
+        tk.Label(y_frame, text="Y Level:", bg="#ddd").pack(side=tk.LEFT)
+        self.plane_y_value = tk.DoubleVar(value=0.0)
+        self.plane_y_entry = tk.Entry(y_frame, textvariable=self.plane_y_value, width=8)
+        self.plane_y_entry.pack(side=tk.LEFT, padx=2)
+        tk.Button(y_frame, text="Create Y Plane", command=self.create_y_plane, 
+                  bg="#9C27B0", fg="white").pack(side=tk.LEFT, padx=2)
+        
+        # Snap section
+        snap_frame = tk.Frame(plane_frame, bg="#ddd")
+        snap_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Label(snap_frame, text="Snap to Plane:", bg="#ddd", font=("Arial", 8, "bold")).pack(anchor="w")
+        
+        self.snap_axis_var = tk.StringVar(value="Y")
+        axis_row = tk.Frame(snap_frame, bg="#ddd")
+        axis_row.pack(fill=tk.X)
+        tk.Label(axis_row, text="Move axis:", bg="#ddd").pack(side=tk.LEFT)
+        for ax in ["X", "Y", "Z"]:
+            tk.Radiobutton(axis_row, text=ax, variable=self.snap_axis_var, value=ax, bg="#ddd").pack(side=tk.LEFT)
+        
+        tk.Button(snap_frame, text="SNAP SELECTED TO PLANE", command=self.snap_to_plane, 
+                  bg="#2196F3", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=2)
         
         return plane_frame
 
@@ -528,13 +1185,14 @@ class KatamariEditor:
         
         origin = [0, 0, 0]
         
-        self.quat_ax.quiver(*origin, *axis_x, color='r', alpha=0.2, arrow_length_ratio=0.15, linewidth=1)
-        self.quat_ax.quiver(*origin, *axis_y, color='g', alpha=0.2, arrow_length_ratio=0.15, linewidth=1)
-        self.quat_ax.quiver(*origin, *axis_z, color='b', alpha=0.2, arrow_length_ratio=0.15, linewidth=1)
+        # Swapped Y and Z for visualization (rendering Z as up)
+        self.quat_ax.quiver(*origin, axis_x[0], axis_x[2], axis_x[1], color='r', alpha=0.2, arrow_length_ratio=0.15, linewidth=1)
+        self.quat_ax.quiver(*origin, axis_y[0], axis_y[2], axis_y[1], color='g', alpha=0.2, arrow_length_ratio=0.15, linewidth=1)
+        self.quat_ax.quiver(*origin, axis_z[0], axis_z[2], axis_z[1], color='b', alpha=0.2, arrow_length_ratio=0.15, linewidth=1)
         
-        self.quat_ax.quiver(*origin, *rotated_x, color='r', alpha=1.0, arrow_length_ratio=0.15, linewidth=2.5, label='X')
-        self.quat_ax.quiver(*origin, *rotated_y, color='g', alpha=1.0, arrow_length_ratio=0.15, linewidth=2.5, label='Y')
-        self.quat_ax.quiver(*origin, *rotated_z, color='b', alpha=1.0, arrow_length_ratio=0.15, linewidth=2.5, label='Z')
+        self.quat_ax.quiver(*origin, rotated_x[0], rotated_x[2], rotated_x[1], color='r', alpha=1.0, arrow_length_ratio=0.15, linewidth=2.5, label='X')
+        self.quat_ax.quiver(*origin, rotated_y[0], rotated_y[2], rotated_y[1], color='g', alpha=1.0, arrow_length_ratio=0.15, linewidth=2.5, label='Y')
+        self.quat_ax.quiver(*origin, rotated_z[0], rotated_z[2], rotated_z[1], color='b', alpha=1.0, arrow_length_ratio=0.15, linewidth=2.5, label='Z')
         
         cube_size = 0.3
         vertices = np.array([
@@ -544,13 +1202,14 @@ class KatamariEditor:
         
         rotated_vertices = np.array([rot_matrix.dot(v) for v in vertices])
         
+        # Swap Y and Z for visualization
         faces = [
-            [rotated_vertices[j] for j in [0, 1, 2, 3]],
-            [rotated_vertices[j] for j in [4, 5, 6, 7]],
-            [rotated_vertices[j] for j in [0, 1, 5, 4]],
-            [rotated_vertices[j] for j in [2, 3, 7, 6]],
-            [rotated_vertices[j] for j in [0, 3, 7, 4]],
-            [rotated_vertices[j] for j in [1, 2, 6, 5]]
+            [[v[0], v[2], v[1]] for v in [rotated_vertices[j] for j in [0, 1, 2, 3]]],
+            [[v[0], v[2], v[1]] for v in [rotated_vertices[j] for j in [4, 5, 6, 7]]],
+            [[v[0], v[2], v[1]] for v in [rotated_vertices[j] for j in [0, 1, 5, 4]]],
+            [[v[0], v[2], v[1]] for v in [rotated_vertices[j] for j in [2, 3, 7, 6]]],
+            [[v[0], v[2], v[1]] for v in [rotated_vertices[j] for j in [0, 3, 7, 4]]],
+            [[v[0], v[2], v[1]] for v in [rotated_vertices[j] for j in [1, 2, 6, 5]]]
         ]
         
         cube = Poly3DCollection(faces, alpha=0.3, facecolors='cyan', edgecolors='black', linewidths=1)
@@ -560,12 +1219,244 @@ class KatamariEditor:
         self.quat_ax.set_ylim([-1, 1])
         self.quat_ax.set_zlim([-1, 1])
         self.quat_ax.set_xlabel('X', fontsize=8)
-        self.quat_ax.set_ylabel('Y', fontsize=8)
-        self.quat_ax.set_zlabel('Z', fontsize=8)
+        self.quat_ax.set_ylabel('Z', fontsize=8)
+        self.quat_ax.set_zlabel('Y', fontsize=8)
         self.quat_ax.set_title('Rotation Visualization', fontsize=9)
         
         self.quat_fig.tight_layout()
         self.quat_canvas.draw()
+
+    def build_pattern_placer(self, parent):
+        """Pattern placement tool for arranging entities"""
+        pattern_frame = tk.LabelFrame(parent, text="Pattern Placer", padx=5, pady=5, bg="#fff0e6")
+        
+        # Pattern type selection
+        type_frame = tk.Frame(pattern_frame, bg="#fff0e6")
+        type_frame.pack(fill=tk.X, pady=2)
+        tk.Label(type_frame, text="Pattern:", bg="#fff0e6", font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        for ptype in ["Circle", "Line", "Path"]:
+            tk.Radiobutton(type_frame, text=ptype, variable=self.pattern_type, value=ptype, 
+                          bg="#fff0e6", command=self.on_pattern_type_change).pack(side=tk.LEFT)
+        
+        # Selection count display
+        count_frame = tk.Frame(pattern_frame, bg="#fff0e6")
+        count_frame.pack(fill=tk.X, pady=2)
+        tk.Label(count_frame, text="Selected Entities:", bg="#fff0e6", font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.pattern_count_label = tk.Label(count_frame, text="0", bg="#fff0e6", font=("Arial", 9), fg="#FF5722")
+        self.pattern_count_label.pack(side=tk.LEFT, padx=5)
+        
+        # Circle/Line parameters
+        self.pattern_params_frame = tk.Frame(pattern_frame, bg="#fff0e6")
+        self.pattern_params_frame.pack(fill=tk.X, pady=2)
+        
+        # Radius (for circle) with range control
+        self.radius_frame = tk.Frame(self.pattern_params_frame, bg="#fff0e6")
+        
+        radius_label_frame = tk.Frame(self.radius_frame, bg="#fff0e6")
+        radius_label_frame.pack(fill=tk.X)
+        tk.Label(radius_label_frame, text="Radius:", bg="#fff0e6").pack(side=tk.LEFT)
+        
+        radius_slider_frame = tk.Frame(self.radius_frame, bg="#fff0e6")
+        radius_slider_frame.pack(fill=tk.X)
+        self.radius_scale = tk.Scale(radius_slider_frame, from_=1, to=500, orient=tk.HORIZONTAL, 
+                                     variable=self.pattern_radius, showvalue=1, bg="#fff0e6", length=120)
+        self.radius_scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        radius_control_frame = tk.Frame(self.radius_frame, bg="#fff0e6")
+        radius_control_frame.pack(fill=tk.X, pady=2)
+        tk.Label(radius_control_frame, text="Max Radius:", bg="#fff0e6", font=("Arial", 7)).pack(side=tk.LEFT)
+        tk.Entry(radius_control_frame, textvariable=self.pattern_radius_limit, width=6).pack(side=tk.LEFT, padx=2)
+        tk.Button(radius_control_frame, text="Update", command=self.update_radius_limit, 
+                 bg="#2196F3", fg="white", font=("Arial", 7)).pack(side=tk.LEFT, padx=2)
+        
+        # Spacing (for line and path)
+        self.spacing_frame = tk.Frame(self.pattern_params_frame, bg="#fff0e6")
+        tk.Label(self.spacing_frame, text="Spacing:", bg="#fff0e6").pack(side=tk.LEFT)
+        tk.Scale(self.spacing_frame, from_=1, to=100, orient=tk.HORIZONTAL, variable=self.pattern_spacing,
+                showvalue=1, bg="#fff0e6", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Waypoint management for Path mode
+        waypoint_frame = tk.LabelFrame(pattern_frame, text="Waypoints", bg="#fff0e6", padx=3, pady=3)
+        waypoint_frame.pack(fill=tk.BOTH, expand=True, pady=2)
+        
+        self.waypoint_listbox = tk.Listbox(waypoint_frame, height=4, font=("Courier", 8))
+        self.waypoint_listbox.pack(fill=tk.BOTH, expand=True, pady=2)
+        
+        wp_btns = tk.Frame(waypoint_frame, bg="#fff0e6")
+        wp_btns.pack(fill=tk.X)
+        tk.Button(wp_btns, text="Add (from sel)", command=self.add_waypoint_from_selection, 
+                 bg="#4CAF50", fg="white", font=("Arial", 7)).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
+        tk.Button(wp_btns, text="Clear", command=self.clear_waypoints, 
+                 bg="#f44336", fg="white", font=("Arial", 7)).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
+        
+        # Apply button
+        tk.Button(pattern_frame, text="APPLY PATTERN", command=self.apply_pattern, 
+                 bg="#FF5722", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=5)
+        
+        self.on_pattern_type_change()
+        self.update_pattern_count_display()
+        return pattern_frame
+
+    def update_radius_limit(self):
+        """Update the radius slider range"""
+        limit = self.pattern_radius_limit.get()
+        self.radius_scale.configure(to=limit)
+
+    def update_pattern_count_display(self):
+        """Update the pattern count label with current selection"""
+        if hasattr(self, 'pattern_count_label'):
+            count = len(self.selected_indices)
+            self.pattern_count_label.config(text=str(count))
+
+    def on_pattern_type_change(self):
+        """Update UI based on pattern type"""
+        ptype = self.pattern_type.get()
+        
+        # Hide all param frames first
+        self.radius_frame.pack_forget()
+        self.spacing_frame.pack_forget()
+        
+        # Show appropriate controls based on pattern type
+        if ptype == "Circle":
+            self.radius_frame.pack(fill=tk.X)
+        elif ptype == "Line":
+            self.spacing_frame.pack(fill=tk.X)
+        elif ptype == "Path":
+            self.spacing_frame.pack(fill=tk.X)
+
+    def add_waypoint_from_selection(self):
+        """Add a waypoint from the average position of selected entities"""
+        if not self.selected_indices:
+            messagebox.showwarning("Selection", "Select at least one entity to use as waypoint.")
+            return
+        
+        # Calculate average position
+        x_avg = sum(self.entities[i]['x'] for i in self.selected_indices) / len(self.selected_indices)
+        y_avg = sum(self.entities[i]['y'] for i in self.selected_indices) / len(self.selected_indices)
+        z_avg = sum(self.entities[i]['z'] for i in self.selected_indices) / len(self.selected_indices)
+        
+        self.waypoints.append((x_avg, y_avg, z_avg))
+        self.refresh_waypoint_list()
+
+    def add_waypoint_from_click(self, event):
+        """Add a waypoint from Alt+Click position in 3D view"""
+        if event.inaxes != self.ax3d:
+            return
+        
+        try:
+            # Get the 2D click coordinates
+            x2d, y2d = event.xdata, event.ydata
+            
+            # Get current view center as depth reference
+            xlim = self.ax3d.get_xlim()
+            ylim = self.ax3d.get_ylim()
+            zlim = self.ax3d.get_zlim()
+            
+            # Use center of view as the Z depth
+            x_center = (xlim[0] + xlim[1]) / 2
+            y_center = (ylim[0] + ylim[1]) / 2
+            z_center = (zlim[0] + zlim[1]) / 2
+            
+            # For simplicity, place waypoint at the click location at the center depth
+            # Convert display coords back to world coords (approximate)
+            # Note: x2d is already negated in display, y2d is z, and we use z_center for y
+            world_x = -x2d
+            world_z = y2d  
+            world_y = z_center
+            
+            self.waypoints.append((world_x, world_y, world_z))
+            self.refresh_waypoint_list()
+            self.lbl_info.config(text=f"Waypoint added at ({world_x:.1f}, {world_y:.1f}, {world_z:.1f})")
+        except Exception as e:
+            print(f"Error adding waypoint: {e}")
+
+    def clear_waypoints(self):
+        """Clear all waypoints"""
+        self.waypoints = []
+        self.refresh_waypoint_list()
+
+    def refresh_waypoint_list(self):
+        """Update waypoint listbox"""
+        self.waypoint_listbox.delete(0, tk.END)
+        for i, (x, y, z) in enumerate(self.waypoints):
+            self.waypoint_listbox.insert(tk.END, f"WP{i+1}: ({x:.1f}, {y:.1f}, {z:.1f})")
+
+    def apply_pattern(self):
+        """Apply the selected pattern to selected entities"""
+        if not self.selected_indices:
+            messagebox.showwarning("Selection", "Select entities to arrange in pattern.")
+            return
+        
+        ptype = self.pattern_type.get()
+        count = len(self.selected_indices)  # Use actual selection count
+        
+        if ptype == "Path" and len(self.waypoints) < 2:
+            messagebox.showwarning("Waypoints", "Path mode requires at least 2 waypoints.")
+            return
+        
+        self.save_undo_state(f"Apply {ptype} Pattern")
+        
+        # Calculate center of selected entities
+        center_x = sum(self.entities[i]['x'] for i in self.selected_indices) / len(self.selected_indices)
+        center_y = sum(self.entities[i]['y'] for i in self.selected_indices) / len(self.selected_indices)
+        center_z = sum(self.entities[i]['z'] for i in self.selected_indices) / len(self.selected_indices)
+        
+        if ptype == "Circle":
+            radius = self.pattern_radius.get()
+            for idx, entity_idx in enumerate(self.selected_indices[:count]):
+                angle = (2 * math.pi * idx) / count
+                self.entities[entity_idx]['x'] = center_x + radius * math.cos(angle)
+                self.entities[entity_idx]['z'] = center_z + radius * math.sin(angle)
+                self.entities[entity_idx]['y'] = center_y
+                self._sync_entity_raw(self.entities[entity_idx])
+        
+        elif ptype == "Line":
+            spacing = self.pattern_spacing.get()
+            start_offset = -(count - 1) * spacing / 2
+            
+            for idx, entity_idx in enumerate(self.selected_indices[:count]):
+                self.entities[entity_idx]['x'] = center_x + start_offset + (idx * spacing)
+                self.entities[entity_idx]['y'] = center_y
+                self.entities[entity_idx]['z'] = center_z
+                self._sync_entity_raw(self.entities[entity_idx])
+        
+        elif ptype == "Path":
+            spacing = self.pattern_spacing.get()
+            
+            # Calculate path segments
+            segments = []
+            total_length = 0
+            for i in range(len(self.waypoints) - 1):
+                p1 = np.array(self.waypoints[i])
+                p2 = np.array(self.waypoints[i + 1])
+                length = np.linalg.norm(p2 - p1)
+                segments.append((p1, p2, length))
+                total_length += length
+            
+            # Place entities along path
+            for idx, entity_idx in enumerate(self.selected_indices[:count]):
+                t = idx / (count - 1) if count > 1 else 0
+                target_dist = t * total_length
+                
+                # Find which segment we're in
+                current_dist = 0
+                for p1, p2, seg_length in segments:
+                    if current_dist + seg_length >= target_dist:
+                        # Interpolate within this segment
+                        local_t = (target_dist - current_dist) / seg_length if seg_length > 0 else 0
+                        pos = p1 + local_t * (p2 - p1)
+                        self.entities[entity_idx]['x'] = pos[0]
+                        self.entities[entity_idx]['y'] = pos[1]
+                        self.entities[entity_idx]['z'] = pos[2]
+                        break
+                    current_dist += seg_length
+                
+                self._sync_entity_raw(self.entities[entity_idx])
+        
+        self.update_editor_fields()
+        self.plot_all()
+        self.highlight_pts()
+        messagebox.showinfo("Success", f"Applied {ptype} pattern to {count} entities.")
 
     def build_position_operations(self, parent):
         ops_frame = tk.LabelFrame(parent, text="Position Operations", padx=5, pady=5, bg="#e8f4f8")
@@ -639,6 +1530,14 @@ class KatamariEditor:
         self.entry_plus_roll_speed = qe(r4, "PlusRollSpd:", "plus_roll_speed")
         self.entry_plus_angle = qe(r4, "PlusAngle:", "plus_angle")
         self.entry_parent_type = qe(r5, "ParentType:", "parent_type")
+        self.entry_clash_type = qe(r5, "ClashType:", "clash_type")
+
+        # Position limit control
+        limit_frame = tk.Frame(editor_frame)
+        limit_frame.pack(fill=tk.X, pady=2)
+        tk.Label(limit_frame, text="Pos Slider Range:").pack(side=tk.LEFT)
+        tk.Entry(limit_frame, textvariable=self.pos_limit, width=8).pack(side=tk.LEFT, padx=2)
+        tk.Button(limit_frame, text="Update", command=self.update_position_limits, bg="#2196F3", fg="white").pack(side=tk.LEFT, padx=2)
 
         # Position sliders only
         slide_container = tk.Frame(editor_frame); slide_container.pack(fill=tk.X, pady=5)
@@ -647,22 +1546,28 @@ class KatamariEditor:
         lf = tk.LabelFrame(slide_container, text="Position")
         lf.pack(fill=tk.X, padx=2)
         
-        limit = 333
+        limit = self.pos_limit.get()
         labels = ["X","Y","Z"]
         for i in range(3):
             r = tk.Frame(lf); r.pack(fill=tk.X)
             tk.Label(r, text=labels[i], width=2).pack(side=tk.LEFT)
             s = tk.Scale(r, from_=-limit, to=limit, orient=tk.HORIZONTAL, variable=self.pos_vars[i], 
-                        showvalue=0, resolution=0.000001, command=lambda val, t=f"pos_{i}": self.on_slider_move(t))
+                        showvalue=0, resolution=0.000001, command=lambda val, idx=i: self.on_slider_move(f"pos_{idx}"))
             s.pack(side=tk.LEFT, fill=tk.X, expand=True)
             self.pos_sliders.append(s)
-            s.bind("<ButtonRelease-1>", lambda ev, t=f"pos_{i}": self.dirty_fields.add(t))
+            s.bind("<ButtonRelease-1>", lambda ev, idx=i: self.dirty_fields.add(f"pos_{idx}"))
             tk.Entry(r, textvariable=self.pos_vars[i], width=12).pack(side=tk.LEFT)
         
         tk.Button(editor_frame, text="COMMIT CHANGES", command=self.commit_batch_changes, bg="#FF5722", fg="white", font=("Arial", 10, "bold")).pack(fill=tk.X, pady=5)
         
         if self.selected_indices: self.update_editor_fields()
         return editor_frame
+
+    def update_position_limits(self):
+        """Update the position slider ranges"""
+        limit = self.pos_limit.get()
+        for slider in self.pos_sliders:
+            slider.configure(from_=-limit, to=limit)
 
     def average_positions(self, axis):
         if len(self.selected_indices) < 2:
@@ -758,11 +1663,9 @@ class KatamariEditor:
         messagebox.showinfo("Success", f"Rotated {len(self.selected_indices)} entities {angle_deg}° around {axis.upper()}-axis.")
 
     def create_plane_from_selection(self):
-        if not (3 <= len(self.selected_indices) <= 5):
-            messagebox.showwarning("Error", "Select 3 to 5 entities to define a plane.")
-            return
-        if len([p for p in self.planes if not p.get("auto", False)]) >= 5:
-            messagebox.showwarning("Limit", "Maximum of 5 planes allowed.")
+        """Create a plane from 3+ selected entities using best-fit"""
+        if len(self.selected_indices) < 3:
+            messagebox.showwarning("Error", "Select at least 3 entities to define a plane.")
             return
 
         self.save_undo_state("Create Plane")
@@ -774,50 +1677,131 @@ class KatamariEditor:
         a, b, c = normal
         d = -np.dot(normal, centroid)
         
-        name = f"Plane {len(self.planes)+1} (h~{centroid[2]:.1f})"
+        name = f"Plane {len(self.planes)+1} (from {len(self.selected_indices)} pts)"
         self.planes.append({"name": name, "coeffs": (a, b, c, d), "points": pts})
         self.refresh_plane_list()
         self.plot_all()
+    
+    def create_y_plane(self):
+        """Create a horizontal plane at specified Y level"""
+        y_val = self.plane_y_value.get()
+        
+        self.save_undo_state("Create Y Plane")
+        
+        # Get bounds for visualization
+        if self.entities:
+            xs = [e['x'] for e in self.entities]
+            zs = [e['z'] for e in self.entities]
+            x_min, x_max = min(xs) - 10, max(xs) + 10
+            z_min, z_max = min(zs) - 10, max(zs) + 10
+        else:
+            x_min, x_max = -100, 100
+            z_min, z_max = -100, 100
+        
+        # Plane equation: y = y_val, so 0*x + 0*z + 1*y - y_val = 0
+        # In our coordinate system: a*x + b*z + c*y + d = 0 where c=1, d=-y_val
+        coeffs = (0, 0, 1, -y_val)
+        
+        pts = np.array([
+            [x_min, z_min, y_val],
+            [x_max, z_min, y_val],
+            [x_max, z_max, y_val],
+            [x_min, z_max, y_val]
+        ])
+        
+        name = f"Y = {y_val:.1f}"
+        self.planes.append({"name": name, "coeffs": coeffs, "points": pts})
+        self.refresh_plane_list()
+        self.plot_all()
+    
+    def on_plane_select(self):
+        """Handle plane selection - update Y value field if it's a Y plane"""
+        if not hasattr(self, 'plane_listbox') or not self.plane_listbox.winfo_exists():
+            return
+        try:
+            sel = self.plane_listbox.curselection()
+            if sel and sel[0] < len(self.planes):
+                plane = self.planes[sel[0]]
+                a, b, c, d = plane["coeffs"]
+                # If it's a Y plane (c is dominant)
+                if abs(c) > 0.9 and abs(a) < 0.1 and abs(b) < 0.1:
+                    self.plane_y_value.set(-d / c)
+            self.plot_all()
+        except tk.TclError:
+            pass
 
     def delete_selected_plane(self):
-        sel = self.plane_listbox.curselection()
-        if sel:
-            self.save_undo_state("Delete Plane")
-            self.planes.pop(sel[0])
-            self.refresh_plane_list()
-            self.plot_all()
+        if not hasattr(self, 'plane_listbox') or not self.plane_listbox.winfo_exists():
+            return
+        try:
+            sel = self.plane_listbox.curselection()
+            if sel:
+                self.save_undo_state("Delete Plane")
+                self.planes.pop(sel[0])
+                self.refresh_plane_list()
+                self.plot_all()
+        except tk.TclError:
+            pass
     
     def refresh_plane_list(self):
-        self.plane_listbox.delete(0, tk.END)
-        for p in self.planes:
-            self.plane_listbox.insert(tk.END, p["name"])
+        # Check if plane_listbox exists and is valid
+        if not hasattr(self, 'plane_listbox') or not self.plane_listbox.winfo_exists():
+            return
+        try:
+            self.plane_listbox.delete(0, tk.END)
+            for p in self.planes:
+                self.plane_listbox.insert(tk.END, p["name"])
+        except tk.TclError:
+            pass  # Widget was destroyed
     
     def snap_to_plane(self):
-        sel_plane_idx = self.plane_listbox.curselection()
-        if not sel_plane_idx or not self.selected_indices:
-            messagebox.showwarning("Selection", "Select a plane from the list AND at least one entity.")
+        """Snap selected entities to the selected plane"""
+        if not hasattr(self, 'plane_listbox') or not self.plane_listbox.winfo_exists():
+            messagebox.showwarning("Error", "Plane manager is not available.")
+            return
+        try:
+            sel_plane_idx = self.plane_listbox.curselection()
+        except tk.TclError:
+            messagebox.showwarning("Error", "Plane manager is not available.")
+            return
+            
+        if not sel_plane_idx:
+            messagebox.showwarning("Selection", "Select a plane from the list first.")
+            return
+        if not self.selected_indices:
+            messagebox.showwarning("Selection", "Select at least one entity to snap.")
             return
         
         self.save_undo_state("Snap to Plane")
         a, b, c, d = self.planes[sel_plane_idx[0]]["coeffs"]
-        snap_axis = 'y'
-        if abs(c) > 0.5: snap_axis = 'y'
-        elif abs(b) > 0.5: snap_axis = 'z'
-        elif abs(a) > 0.5: snap_axis = 'x'
         
-        denom = c if snap_axis == 'y' else (b if snap_axis == 'z' else a)
-        if abs(denom) < 1e-6:
-            messagebox.showerror("Error", f"Plane is parallel to {snap_axis.upper()}-axis, cannot snap.")
+        # Get the snap axis from UI
+        snap_axis = self.snap_axis_var.get().lower() if hasattr(self, 'snap_axis_var') else 'y'
+        
+        # Check if we can snap on this axis
+        if snap_axis == 'y' and abs(c) < 1e-6:
+            messagebox.showerror("Error", "Plane is parallel to Y-axis, cannot snap Y values.")
+            return
+        elif snap_axis == 'z' and abs(b) < 1e-6:
+            messagebox.showerror("Error", "Plane is parallel to Z-axis, cannot snap Z values.")
+            return
+        elif snap_axis == 'x' and abs(a) < 1e-6:
+            messagebox.showerror("Error", "Plane is parallel to X-axis, cannot snap X values.")
             return
 
         count = 0
         for idx in self.selected_indices:
             ent = self.entities[idx]
-            if snap_axis == 'y': val = -(a * ent['x'] + b * ent['z'] + d) / c
-            elif snap_axis == 'z': val = -(a * ent['x'] + c * ent['y'] + d) / b
-            else: val = -(b * ent['z'] + c * ent['y'] + d) / a
+            # Plane equation: a*x + b*z + c*y + d = 0
+            # Solve for the chosen axis
+            if snap_axis == 'y':
+                val = -(a * ent['x'] + b * ent['z'] + d) / c
+            elif snap_axis == 'z':
+                val = -(a * ent['x'] + c * ent['y'] + d) / b
+            else:  # x
+                val = -(b * ent['z'] + c * ent['y'] + d) / a
                 
-            if ent[snap_axis] != val:
+            if abs(ent[snap_axis] - val) > 0.001:
                 ent[snap_axis] = val
                 self._sync_entity_raw(ent)
                 count += 1
@@ -826,7 +1810,7 @@ class KatamariEditor:
             self.update_editor_fields()
             self.plot_all()
             self.highlight_pts()
-            messagebox.showinfo("Success", f"Snapped {count} items to plane ({snap_axis.upper()}).")
+            messagebox.showinfo("Success", f"Snapped {count} entities to plane (moved {snap_axis.upper()}).")
 
     def on_size_filter_change(self):
         self.on_slice_update()
@@ -834,6 +1818,7 @@ class KatamariEditor:
     def get_colors(self, indices):
         mode = self.viz_mode.get()
         rad_scale = self.color_radius.get()
+        hue_adjustment = self.hue_shift.get()
         if not indices: return np.zeros((0, 3))
         
         coords = np.array([[self.entities[i]['x'], self.entities[i]['y'], self.entities[i]['z']] for i in indices])
@@ -843,19 +1828,24 @@ class KatamariEditor:
             z_min, z_max = z_values.min(), z_values.max()
             rng = (z_max - z_min) if (z_max - z_min) > 0 else 1.0
             norm_z = np.clip((z_values - z_min) / rng, 0, 1)
-            return matplotlib.cm.plasma(norm_z)[:, :3]
+            colors = matplotlib.cm.viridis(norm_z)[:, :3]
+            if hasattr(self, 'loaded_maps') and len(self.loaded_maps) > 1:
+                colors = self.apply_hue_shift(colors, indices)
             
         elif mode == "Logic":
             logic_pts = np.array([[e['x'], e['y'], e['z']] for e in self.entities if e['id'] == "3226"])
-            if len(logic_pts) == 0: return np.array([[0.5, 0.5, 0.5]] * len(indices))
-            dists = []
-            for p in coords:
-                d = np.sqrt(np.sum((logic_pts - p)**2, axis=1)).min()
-                dists.append(d)
-            dists = np.array(dists)
-            max_d = (dists.max() if dists.max() > 0 else 1.0) / rad_scale
-            dists = np.clip(1.0 - (dists / max_d), 0, 1)
-            return matplotlib.cm.plasma(dists)[:, :3] 
+            if len(logic_pts) == 0: 
+                colors = np.array([[0.5, 0.5, 0.5]] * len(indices))
+            else:
+                dists = []
+                for p in coords:
+                    d = np.sqrt(np.sum((logic_pts - p)**2, axis=1)).min()
+                    dists.append(d)
+                dists = np.array(dists)
+                max_d = dists.max() if dists.max() > 0 else 1.0
+                effective_range = max_d / max(rad_scale, 0.1)
+                norm_dists = np.clip(1.0 - (dists / effective_range), 0, 1)
+                colors = matplotlib.cm.plasma(norm_dists)[:, :3]
 
         elif mode == "ID":
             ids = []
@@ -864,21 +1854,32 @@ class KatamariEditor:
                 except: ids.append(0)
             ids = np.array(ids)
             norm_ids = (ids % 20) / 20.0
-            return matplotlib.cm.tab20(norm_ids)[:, :3]
+            colors = matplotlib.cm.tab20(norm_ids)[:, :3]
 
         elif mode == "Size":
             sizes = []
             for i in indices:
                 sizes.append(self.get_size_from_db(self.entities[i]))
             sizes = np.array(sizes)
-            valid_sizes = sizes[sizes < 9000000]
+            
+            valid_sizes = sizes[(sizes > 0) & (sizes < 50000)]
+            
             if len(valid_sizes) > 0:
-                mn, mx = valid_sizes.min(), valid_sizes.max()
-                rng = mx - mn if mx > mn else 1.0
-                norm_sizes = np.clip((sizes - mn) / rng, 0, 1)
+                log_sizes = np.log10(np.maximum(sizes, 0.1))
+                log_min = np.log10(valid_sizes.min())
+                log_max = np.log10(valid_sizes.max())
+                
+                rng = log_max - log_min if log_max > log_min else 1.0
+                norm_sizes = np.clip((log_sizes - log_min) / rng, 0, 1)
+                norm_sizes[sizes >= 50000] = 0.5
             else:
-                norm_sizes = np.zeros_like(sizes)
-            return matplotlib.cm.viridis(norm_sizes)[:, :3]
+                norm_sizes = np.zeros_like(sizes, dtype=float)
+            
+            colors = matplotlib.cm.turbo(norm_sizes)[:, :3]
+            colors[sizes >= 50000] = [0.5, 0.5, 0.5]
+            
+            if hasattr(self, 'loaded_maps') and len(self.loaded_maps) > 1:
+                colors = self.apply_hue_shift(colors, indices)
         
         elif mode == "Hierarchy":
             parent_map = {}
@@ -905,12 +1906,56 @@ class KatamariEditor:
             max_depth = depths.max() if len(depths) > 0 else 0
             
             if max_depth == 0:
-                return np.array([[0.3, 0.3, 0.8]] * len(indices))
+                colors = np.array([[0.3, 0.3, 0.8]] * len(indices))
+            else:
+                norm_depths = depths / max_depth
+                colors = matplotlib.cm.rainbow(norm_depths)[:, :3]
             
-            norm_depths = depths / max_depth
-            return matplotlib.cm.turbo(norm_depths)[:, :3]
-            
-        return np.array([[0.0, 0.0, 1.0]] * len(indices))
+            if hasattr(self, 'loaded_maps') and len(self.loaded_maps) > 1:
+                colors = self.apply_hue_shift(colors, indices)
+        else:
+            # Standard mode - default blue
+            colors = np.array([[0.0, 0.0, 1.0]] * len(indices))
+        
+        # Apply user hue adjustment to ALL modes
+        if hue_adjustment != 0:
+            colors = self.adjust_hue(colors, hue_adjustment)
+        
+        return colors
+
+    def apply_hue_shift(self, colors, indices):
+        """Apply hue shift based on which map each entity belongs to"""
+        import colorsys
+        shifted_colors = colors.copy()
+        
+        for idx, entity_idx in enumerate(indices):
+            # Find which map this entity belongs to
+            map_idx = self.entities[entity_idx].get('map_index', 0)
+            if map_idx < len(self.loaded_maps):
+                hue_shift = self.loaded_maps[map_idx]['hue_offset']
+                
+                # Convert RGB to HSV, shift hue, convert back
+                r, g, b = colors[idx]
+                h, s, v = colorsys.rgb_to_hsv(r, g, b)
+                h = (h + hue_shift) % 1.0
+                shifted_colors[idx] = colorsys.hsv_to_rgb(h, s, v)
+        
+        return shifted_colors
+    
+    def adjust_hue(self, colors, hue_amount):
+        """Apply a uniform hue rotation to all colors"""
+        import colorsys
+        if hue_amount == 0:
+            return colors
+        
+        adjusted_colors = colors.copy()
+        for idx in range(len(colors)):
+            r, g, b = colors[idx]
+            h, s, v = colorsys.rgb_to_hsv(r, g, b)
+            h = (h + hue_amount) % 1.0
+            adjusted_colors[idx] = colorsys.hsv_to_rgb(h, s, v)
+        
+        return adjusted_colors
 
     def get_size_from_db(self, ent):
         db_key = ent['id'].lstrip('0') or '0'
@@ -923,25 +1968,40 @@ class KatamariEditor:
         if len(indices) == 0:
             return base_colors
         
-        proj = self.ax3d.get_proj()
-        depths = []
-        for i in indices:
-            e = self.entities[i]
-            _, _, z_depth = proj3d.proj_transform(e['x'], e['z'], e['y'], proj)
-            depths.append(z_depth)
-        
-        depths = np.array(depths)
-        if len(depths) == 0: return base_colors
-        d_min, d_max = depths.min(), depths.max()
-        if d_max == d_min: return base_colors
-        
-        fog = (depths - d_min) / (d_max - d_min)
-        
-        if not isinstance(base_colors, np.ndarray):
-             base_colors = np.array([matplotlib.colors.to_rgb(base_colors)] * len(indices))
-        
-        shaded = base_colors * (1.0 - (fog[:, np.newaxis] * 0.7))
-        return np.clip(shaded, 0, 1)
+        # Use camera distance for depth fog instead of raw coordinates
+        try:
+            # Get current camera position
+            xs = [self.entities[i]['x'] for i in indices]
+            ys = [self.entities[i]['y'] for i in indices]
+            zs = [self.entities[i]['z'] for i in indices]
+            
+            # Get the 3D to 2D projection
+            proj = self.ax3d.get_proj()
+            
+            # Calculate depth from camera for each point
+            depths = []
+            for i in range(len(indices)):
+                # Transform to display coordinates
+                x2d, y2d, z2d = proj3d.proj_transform(-xs[i], zs[i], ys[i], proj)
+                depths.append(z2d)
+            
+            depths = np.array(depths)
+            if len(depths) == 0: return base_colors
+            
+            # Normalize depths relative to view
+            d_min, d_max = depths.min(), depths.max()
+            if d_max == d_min: return base_colors
+            
+            fog = (depths - d_min) / (d_max - d_min)
+            
+            if not isinstance(base_colors, np.ndarray):
+                base_colors = np.array([matplotlib.colors.to_rgb(base_colors)] * len(indices))
+            
+            # Apply fog effect - farther objects are darker
+            shaded = base_colors * (1.0 - (fog[:, np.newaxis] * 0.7))
+            return np.clip(shaded, 0, 1)
+        except:
+            return base_colors
 
     def on_slice_axis_change(self, e):
         ax = self.slice_axis.get()
@@ -954,8 +2014,51 @@ class KatamariEditor:
             self.scale_depth.config(from_=mn-10, to=mx+10)
         self.on_slice_update()
 
+    def auto_zoom_to_fit(self):
+        """Auto-zoom to fit all entities in view"""
+        if not self.entities:
+            return
+        
+        xs = [e['x'] for e in self.entities]
+        ys = [e['y'] for e in self.entities]
+        zs = [e['z'] for e in self.entities]
+        
+        # Calculate actual data range
+        x_min, x_max = min(xs), max(xs)
+        y_min, y_max = min(ys), max(ys)
+        z_min, z_max = min(zs), max(zs)
+        
+        # Calculate center
+        x_center = (x_min + x_max) / 2
+        y_center = (y_min + y_max) / 2
+        z_center = (z_min + z_max) / 2
+        
+        # Calculate ranges
+        x_range = max(x_max - x_min, 10)
+        y_range = max(y_max - y_min, 10)
+        z_range = max(z_max - z_min, 10)
+        
+        # Use the maximum range with padding
+        max_range = max(x_range, y_range, z_range) * 0.6  # 60% of max range for padding
+        
+        # Get current view angles (preserve user's rotation)
+        current_azim = self.ax3d.azim
+        current_elev = self.ax3d.elev
+        
+        # Set bounds centered on data
+        self.ax3d.set_xlim(-x_center - max_range, -x_center + max_range)  # Negated for display
+        self.ax3d.set_ylim(z_center - max_range, z_center + max_range)
+        self.ax3d.set_zlim(y_center - max_range, y_center + max_range)
+        
+        # Preserve rotation
+        self.ax3d.view_init(elev=current_elev, azim=current_azim)
+        
+        self.canvas.draw()
+        self.lbl_info.config(text=f"Auto-zoomed to fit all entities (range: {max_range*2:.1f})")
+
     def plot_all(self):
-        if self.ax3d.get_visible():
+        # Only save view state if user has interacted (don't save initial auto-zoom)
+        if self.ax3d.get_visible() and self.initial_view_set:
             self.view_state['3d'] = (self.ax3d.azim, self.ax3d.elev, self.ax3d.get_xlim(), self.ax3d.get_ylim(), self.ax3d.get_zlim())
 
         if not self.entities: 
@@ -989,11 +2092,26 @@ class KatamariEditor:
             alpha = self.entity_opacity.get()
             shaded_colors = self.apply_depth_shading(colors, visible_indices)
             
-            self.ax3d.scatter([-x for x in xs], zs, ys, c=shaded_colors, alpha=alpha, s=s_vals, 
-                            picker=True, zorder=1, edgecolors='black', linewidths=0.5)
+            # Prepare size values
+            if isinstance(s_vals, (int, float)):
+                s_vals = np.full(len(visible_indices), float(s_vals))
+            else:
+                s_vals = np.array(s_vals, dtype=float)
+            
+            # Draw ALL entities in one scatter (required for correct picking)
+            self.ax3d.scatter([-x for x in xs], zs, ys, 
+                            c=shaded_colors, alpha=alpha, s=s_vals, 
+                            picker=True, edgecolors='black', linewidths=0.5)
         
         self.figure.subplots_adjust(left=0, right=1, bottom=0, top=1)
-        active_plane_idx = self.plane_listbox.curselection()
+        
+        # Safely get active plane index
+        active_plane_idx = None
+        if hasattr(self, 'plane_listbox') and self.plane_listbox.winfo_exists():
+            try:
+                active_plane_idx = self.plane_listbox.curselection()
+            except tk.TclError:
+                pass
         
         for idx, p in enumerate(self.planes):
             a, b, c, d = p["coeffs"]
@@ -1027,33 +2145,43 @@ class KatamariEditor:
                 flipped_pts[:,0] = -flipped_pts[:,0]
                 verts = [list(zip(flipped_pts[:,0], flipped_pts[:,1], flipped_pts[:,2]))]
                 poly = Poly3DCollection(verts, alpha=p_alpha, facecolors=color)
-                self.quat_ax.add_collection3d(poly)
+                self.ax3d.add_collection3d(poly)
             elif abs(c) > 1e-6:
                 self.ax3d.plot_surface(X, Z, Y, color=color, alpha=p_alpha, shade=False)
 
-        if self.view_state['3d']:
+        # Restore view state only if it exists and initial view has been set
+        if self.view_state['3d'] and self.initial_view_set:
             azim, elev, xlim, ylim, zlim = self.view_state['3d']
             self.ax3d.view_init(elev=elev, azim=azim)
             self.ax3d.set_xlim(xlim); self.ax3d.set_ylim(ylim); self.ax3d.set_zlim(zlim)
         else:
             self.ax3d.set_xlabel('X'); self.ax3d.set_ylabel('Z'); self.ax3d.set_zlabel('Y')
 
+        # Apply theme
+        self.apply_theme()
+        
         self.canvas.draw()
         self.highlight_pts()
 
     def highlight_pts(self, live_preview=False):
+        """Draw highlight markers for selected entities."""
         for i, h in enumerate(self.highlights):
             if h:
                 try: h.remove()
                 except: pass
                 self.highlights[i] = None
-        if not self.selected_indices: return
+        
+        if not self.selected_indices: 
+            self.canvas.draw_idle()
+            return
         
         xs, ys, zs = [], [], []
         off = self.offset_mode.get()
         p_vals = [v.get() for v in self.pos_vars]
         
         for i in self.selected_indices:
+            if i >= len(self.entities):
+                continue
             e = self.entities[i]
             if live_preview:
                 px = (e['x'] - p_vals[0]) if off else -p_vals[0]
@@ -1063,11 +2191,31 @@ class KatamariEditor:
                 px, py, pz = e['x'], e['y'], e['z']
             xs.append(px); ys.append(py); zs.append(pz)
             
-        if self.ax3d.get_visible():
-            self.highlights[3] = self.ax3d.scatter([-x for x in xs], zs, ys, 
-                                                   c='#FF0000', s=150, 
-                                                   edgecolors='yellow', linewidths=2.5, 
-                                                   zorder=10000, depthshade=False, alpha=1.0)
+        if self.ax3d.get_visible() and xs:
+            # Layer 1: Yellow outer ring (outline around entity)
+            self.highlights[0] = self.ax3d.scatter(
+                [-x for x in xs], zs, ys, 
+                c='none',
+                s=250,
+                marker='o',
+                edgecolors='#FFD700',  # Gold/yellow
+                linewidths=3, 
+                depthshade=False,
+                alpha=0.9
+            )
+            
+            # Layer 2: Red circle (slightly smaller, inside the yellow)
+            self.highlights[1] = self.ax3d.scatter(
+                [-x for x in xs], zs, ys, 
+                c='none',
+                s=150,
+                marker='o',
+                edgecolors='#CC0000',  # Darker red, less harsh
+                linewidths=2.5, 
+                depthshade=False,
+                alpha=0.9
+            )
+            
         self.canvas.draw_idle()
 
     def swap_positions(self):
@@ -1104,16 +2252,9 @@ class KatamariEditor:
             for s in self.pos_sliders:
                 s.configure(from_=-1000, to=1000)
         else:
-            if self.entities:
-                max_range = max(
-                    self.axis_bounds['x'][1] - self.axis_bounds['x'][0],
-                    self.axis_bounds['y'][1] - self.axis_bounds['y'][0],
-                    self.axis_bounds['z'][1] - self.axis_bounds['z'][0],
-                    10.0
-                )
-                absolute_limit = max_range * 0.6
-                for s in self.pos_sliders:
-                    s.configure(from_=-absolute_limit, to=absolute_limit)
+            limit = self.pos_limit.get()
+            for s in self.pos_sliders:
+                s.configure(from_=-limit, to=limit)
 
     def _parse_block(self, b):
         def get_t(t, src):
@@ -1153,6 +2294,7 @@ class KatamariEditor:
             'plus_roll_speed': find_val(['plus_roll_speed'], b),
             'plus_angle': find_val(['plus_angle'], b),
             'parent_type': find_val(['parent_type'], b),
+            'clash_type': find_val(['clash_type'], b),
             'child_ids': []
         }
 
@@ -1198,7 +2340,7 @@ class KatamariEditor:
             for f, t in [('id','index'), ('atk','attack_type'), ('mov','move_type'), ('esc','escape_type'), 
                          ('spd','speed'), ('pth','path_id'), ('scale','scale'), ('plus_type','plus_type'),
                          ('plus_fly_height','plus_fly_height'), ('plus_roll_speed','plus_roll_speed'),
-                         ('plus_angle','plus_angle'), ('parent_type','parent_type')]:
+                         ('plus_angle','plus_angle'), ('parent_type','parent_type'), ('clash_type','clash_type')]:
                 if f in self.dirty_fields:
                     val_str = str(self.get_entry_val(f)).strip()
                     if f == 'id':
@@ -1223,7 +2365,7 @@ class KatamariEditor:
              'spd':self.entry_speed, 'pth':self.entry_path, 'scale':self.entry_scale, 
              'plus_type':self.entry_plus_type, 'plus_fly_height':self.entry_plus_fly_height,
              'plus_roll_speed':self.entry_plus_roll_speed, 'plus_angle':self.entry_plus_angle,
-             'parent_type':self.entry_parent_type}
+             'parent_type':self.entry_parent_type, 'clash_type':self.entry_clash_type}
         return m[k].get()
 
     def on_slice_update(self):
@@ -1284,6 +2426,7 @@ class KatamariEditor:
     def on_graph_pick(self, event):
         if self.toolbar.mode != "" or self.select_mode.get() != "CLICK": return
         if not self.display_mapping: return
+        if event.mouseevent.button != 1: return
         try:
             midx = self.display_mapping[event.ind[0]]
             shift, ctrl = (event.mouseevent.key == 'shift'), (event.mouseevent.key == 'control')
@@ -1299,7 +2442,14 @@ class KatamariEditor:
     def on_mouse_down(self, event):
         if not event.inaxes or self.toolbar.mode != "": return
         mode = self.select_mode.get()
-        if mode == "CLICK": return 
+        
+        # Alt+Click to add waypoint at mouse position
+        if event.key == 'alt' and event.button == 1 and event.inaxes == self.ax3d:
+            self.add_waypoint_from_click(event)
+            return
+        
+        if mode == "CLICK" or mode == "NONE": return
+        if event.button != 1: return
         self.is_dragging = True; self.drag_start = (event.xdata, event.ydata); self.active_ax = event.inaxes
         if mode == "PAINT": self.do_paint_select(event)
     
@@ -1334,6 +2484,7 @@ class KatamariEditor:
                 if i == self.selected_indices[-1]: 
                     self.entity_listbox.see(pos)
         self.update_editor_fields()
+        self.update_pattern_count_display()
         self.highlight_pts()
         self.is_updating_ui = False
 
@@ -1347,8 +2498,6 @@ class KatamariEditor:
     def on_slider_move(self, t):
         if not self.is_updating_ui and self.selected_indices: 
             self.highlight_pts(live_preview=True)
-            if t.startswith("rot_"):
-                self.update_quaternion_display()
 
     def sort_entities(self, crit):
         self.sort_reverse = (not self.sort_reverse) if self.last_sort == crit else False
@@ -1375,7 +2524,7 @@ class KatamariEditor:
             with open(p, 'r', encoding='utf-8-sig') as f:
                 self.item_db = {r['ID'].strip().lstrip('0'): {'name': r['NAME'], 'size_val': float(re.sub(r'[^\d.]', '', r['SIZE (mm)'])) if r.get('SIZE (mm)') else 0} for r in csv.DictReader(f)}
             
-            if self.item_db:
+            if self.item_db and hasattr(self, 'scale_size_max'):
                 sizes = [info['size_val'] for info in self.item_db.values() if info['size_val'] < 9000000]
                 if sizes:
                     max_size = max(sizes)
@@ -1385,6 +2534,195 @@ class KatamariEditor:
             self.refresh_list()
 
     def load_file(self):
+        p = filedialog.askopenfilename(filetypes=[("DAT","*.dat")])
+        if not p: return
+        
+        # Clear existing data for fresh load
+        self.loaded_maps = []
+        self._load_map_file(p, is_primary=True)
+
+    def add_map(self):
+        """Add another map to the current view"""
+        p = filedialog.askopenfilename(filetypes=[("DAT","*.dat")])
+        if not p: return
+        self._load_map_file(p, is_primary=False)
+
+    def _load_map_file(self, filepath, is_primary=True):
+        """Internal method to load a map file"""
+        import os
+        map_name = os.path.basename(filepath)
+        
+        with open(filepath, 'rb') as f: 
+            content = f.read().decode('utf-8', errors='ignore')
+        
+        if is_primary:
+            self.file_sequence, self.entities = [], []
+            self.undo_stack = []
+            self.update_undo_button()
+        
+        # Store starting index for this map's entities
+        start_idx = len(self.entities)
+        map_entities = []
+        map_sequence = []
+        
+        token_pattern = re.compile(r'(<entity>|</entity>|<child>|</child>)')
+        
+        last_pos = 0
+        entity_start_pos = None
+        parent_stack = []
+        
+        for match in token_pattern.finditer(content):
+            token = match.group(1)
+            start, end = match.start(), match.end()
+            
+            if entity_start_pos is None:
+                if start > last_pos:
+                    map_sequence.append(content[last_pos:start])
+            
+            if token == "<entity>":
+                entity_start_pos = start
+            
+            elif token == "<child>":
+                if entity_start_pos is not None:
+                    raw_chunk = content[entity_start_pos:start]
+                    ent = self._parse_block(raw_chunk)
+                    ent['child_ids'] = []
+                    ent['map_index'] = len(self.loaded_maps)
+                    ent['map_name'] = map_name
+                    map_entities.append(ent)
+                    self.entities.append(ent)
+                    map_sequence.append(ent)
+                    
+                    parent_stack.append(len(self.entities) - 1)
+                    entity_start_pos = None
+                
+                map_sequence.append(token)
+            
+            elif token == "</entity>":
+                if entity_start_pos is not None:
+                    raw_chunk = content[entity_start_pos:end]
+                    ent = self._parse_block(raw_chunk)
+                    ent['child_ids'] = []
+                    ent['map_index'] = len(self.loaded_maps)
+                    ent['map_name'] = map_name
+                    map_entities.append(ent)
+                    self.entities.append(ent)
+                    map_sequence.append(ent)
+                    
+                    if parent_stack:
+                        self.entities[parent_stack[-1]]['child_ids'].append(ent['id'])
+                    
+                    entity_start_pos = None
+                else:
+                    map_sequence.append(token)
+            
+            elif token == "</child>":
+                map_sequence.append(token)
+                if parent_stack:
+                    parent_stack.pop()
+
+            last_pos = end
+
+        if last_pos < len(content):
+            map_sequence.append(content[last_pos:])
+        
+        # Calculate hue offset for this map
+        hue_offset = len(self.loaded_maps) * 0.15  # 15% hue shift per map
+        
+        # Store this map
+        self.loaded_maps.append({
+            'name': map_name,
+            'filepath': filepath,
+            'entities': map_entities,
+            'file_sequence': map_sequence,
+            'hue_offset': hue_offset,
+            'start_idx': start_idx
+        })
+        
+        if is_primary:
+            self.file_sequence = map_sequence
+            self.current_map_name = map_name
+        else:
+            # Merge sequences
+            self.file_sequence.extend(map_sequence)
+        
+        # Update title
+        if len(self.loaded_maps) == 1:
+            self.root.title(f"Katamari Editor 19.3 - {map_name}")
+        else:
+            map_names = " + ".join([m['name'] for m in self.loaded_maps])
+            self.root.title(f"Katamari Editor 19.3 - {map_names}")
+        
+        if self.entities:
+            xs, ys, zs = [e['x'] for e in self.entities], [e['y'] for e in self.entities], [e['z'] for e in self.entities]
+            self.axis_bounds = {'x':(min(xs), max(xs)), 'y':(min(ys), max(ys)), 'z':(min(zs), max(zs))}
+            
+            max_range = max(max(xs)-min(xs), max(ys)-min(ys), max(zs)-min(zs), 10.0)
+            auto_limit = max_range * 0.6
+            self.pos_limit.set(auto_limit)
+            
+            for s in self.pos_sliders:
+                if self.offset_mode.get():
+                    s.configure(from_=-1000, to=1000)
+                else:
+                    s.configure(from_=-auto_limit, to=auto_limit)
+            
+            # Set initial 3D view to fit all entities (only on first load)
+            if not self.initial_view_set or not is_primary:
+                # Calculate actual data range
+                x_min, x_max = min(xs), max(xs)
+                y_min, y_max = min(ys), max(ys)
+                z_min, z_max = min(zs), max(zs)
+                
+                # Calculate center
+                x_center = (x_min + x_max) / 2
+                y_center = (y_min + y_max) / 2
+                z_center = (z_min + z_max) / 2
+                
+                # Calculate ranges
+                x_range = max(x_max - x_min, 10)
+                y_range = max(y_max - y_min, 10)
+                z_range = max(z_max - z_min, 10)
+                
+                # Use the maximum range with padding
+                max_range = max(x_range, y_range, z_range) * 0.6  # 60% of max range for padding
+                
+                # Store the initial view state centered on data
+                self.view_state['3d'] = (
+                    -60,  # azimuth
+                    30,   # elevation
+                    (-x_center - max_range, -x_center + max_range),  # x (negated for display)
+                    (z_center - max_range, z_center + max_range),    # z
+                    (y_center - max_range, y_center + max_range)     # y
+                )
+                self.initial_view_set = True
+            
+        self.on_slice_update()
+        
+        if not is_primary:
+            self.lbl_info.config(text=f"Added map: {map_name} ({len(map_entities)} entities)")
+
+    def save_all_maps(self):
+        """Save all loaded maps to their original files"""
+        if not self.loaded_maps:
+            messagebox.showwarning("No Maps", "No maps loaded to save.")
+            return
+        
+        saved_count = 0
+        for map_data in self.loaded_maps:
+            try:
+                # Reconstruct this map's file from its entities
+                out = "".join([i if isinstance(i, str) else i['raw'] for i in map_data['file_sequence']])
+                with open(map_data['filepath'], 'wb') as f:
+                    f.write(out.encode('utf-8'))
+                saved_count += 1
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save {map_data['name']}: {e}")
+        
+        if saved_count > 0:
+            messagebox.showinfo("Success", f"Saved {saved_count} map(s).")
+
+    def load_file_old(self):
         p = filedialog.askopenfilename(filetypes=[("DAT","*.dat")])
         if not p: return
         with open(p, 'rb') as f: content = f.read().decode('utf-8', errors='ignore')
@@ -1453,13 +2791,45 @@ class KatamariEditor:
             self.axis_bounds = {'x':(min(xs), max(xs)), 'y':(min(ys), max(ys)), 'z':(min(zs), max(zs))}
             
             max_range = max(max(xs)-min(xs), max(ys)-min(ys), max(zs)-min(zs), 10.0)
-            absolute_limit = max_range * 0.6
+            auto_limit = max_range * 0.6
+            self.pos_limit.set(auto_limit)
             
             for s in self.pos_sliders:
                 if self.offset_mode.get():
                     s.configure(from_=-1000, to=1000)
                 else:
-                    s.configure(from_=-absolute_limit, to=absolute_limit)
+                    s.configure(from_=-auto_limit, to=auto_limit)
+            
+            # Set initial 3D view to fit all entities (only on first load)
+            if not self.initial_view_set:
+                # Calculate actual data range
+                x_min, x_max = min(xs), max(xs)
+                y_min, y_max = min(ys), max(ys)
+                z_min, z_max = min(zs), max(zs)
+                
+                # Calculate center
+                x_center = (x_min + x_max) / 2
+                y_center = (y_min + y_max) / 2
+                z_center = (z_min + z_max) / 2
+                
+                # Calculate ranges
+                x_range = max(x_max - x_min, 10)
+                y_range = max(y_max - y_min, 10)
+                z_range = max(z_max - z_min, 10)
+                
+                # Use the maximum range with padding
+                max_range = max(x_range, y_range, z_range) * 0.6  # 60% of max range for padding
+                
+                # Store the initial view state centered on data
+                self.view_state['3d'] = (
+                    -60,  # azimuth
+                    30,   # elevation
+                    (-x_center - max_range, -x_center + max_range),  # x (negated for display)
+                    (z_center - max_range, z_center + max_range),    # z
+                    (y_center - max_range, y_center + max_range)     # y
+                )
+                self.initial_view_set = True
+            
         self.on_slice_update()
 
     def refresh_list(self):
@@ -1526,19 +2896,66 @@ class KatamariEditor:
                          (self.entry_speed,'spd'), (self.entry_path,'pth'), (self.entry_scale,'scale'),
                          (self.entry_plus_type,'plus_type'), (self.entry_plus_fly_height,'plus_fly_height'),
                          (self.entry_plus_roll_speed,'plus_roll_speed'), (self.entry_plus_angle,'plus_angle'),
-                         (self.entry_parent_type,'parent_type')]:
+                         (self.entry_parent_type,'parent_type'), (self.entry_clash_type,'clash_type')]:
                 e.delete(0, tk.END); e.insert(0, ent.get(k, '0'))
             for i in range(3): self.pos_vars[i].set([-ent['x'], -ent['y'], -ent['z']][i])
         
         self.update_quaternion_display()
         self.is_updating_ui = False
 
+    def load_file_old(self):
+        """Old load method - kept for reference, replaced by _load_map_file"""
+        pass
+
     def save_map_file(self):
-        p = filedialog.asksaveasfilename(defaultextension=".dat")
-        if p:
-            out = "".join([i if isinstance(i, str) else i['raw'] for i in self.file_sequence])
-            with open(p, 'wb') as f: f.write(out.encode('utf-8'))
-            messagebox.showinfo("Success", "Saved.")
+        """Save map - if multiple maps loaded, ask which one to save"""
+        if len(self.loaded_maps) > 1:
+            # Show dialog to choose which map to save
+            choice = tk.Toplevel(self.root)
+            choice.title("Save Which Map?")
+            choice.geometry("300x150")
+            choice.transient(self.root)
+            choice.grab_set()
+            
+            tk.Label(choice, text="Multiple maps loaded.\nWhich map do you want to save?", pady=10).pack()
+            
+            for i, map_data in enumerate(self.loaded_maps):
+                btn = tk.Button(choice, text=f"Save: {map_data['name']}", 
+                               command=lambda idx=i, win=choice: self._save_single_map(idx, win))
+                btn.pack(fill=tk.X, padx=20, pady=2)
+            
+            tk.Button(choice, text="Cancel", command=choice.destroy).pack(pady=10)
+        elif len(self.loaded_maps) == 1:
+            self._save_single_map(0)
+        else:
+            # No loaded_maps - use legacy file_sequence
+            p = filedialog.asksaveasfilename(defaultextension=".dat")
+            if p:
+                out = "".join([i if isinstance(i, str) else i['raw'] for i in self.file_sequence])
+                with open(p, 'wb') as f: f.write(out.encode('utf-8'))
+                messagebox.showinfo("Success", "Saved.")
+    
+    def _save_single_map(self, map_idx, dialog=None):
+        """Save a single map by index"""
+        if dialog:
+            dialog.destroy()
+        
+        map_data = self.loaded_maps[map_idx]
+        
+        # Ask where to save
+        p = filedialog.asksaveasfilename(
+            defaultextension=".dat",
+            initialfile=map_data['name'],
+            filetypes=[("DAT", "*.dat")]
+        )
+        if not p:
+            return
+        
+        # Reconstruct this map's file from its file_sequence
+        out = "".join([i if isinstance(i, str) else i['raw'] for i in map_data['file_sequence']])
+        with open(p, 'wb') as f: 
+            f.write(out.encode('utf-8'))
+        messagebox.showinfo("Success", f"Saved {map_data['name']}.")
 
 if __name__ == "__main__":
     root = tk.Tk()
