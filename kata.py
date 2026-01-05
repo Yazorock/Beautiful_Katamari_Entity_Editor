@@ -79,7 +79,8 @@ class KatamariEditor:
         self.slice_side = tk.StringVar(value="Left")
         self.quat_side = tk.StringVar(value="Right")
         self.pattern_side = tk.StringVar(value="Right")
-        
+        self.mesh_side = tk.StringVar(value="Left")
+
         # Visibility toggles for each panel
         self.show_batch = tk.BooleanVar(value=True)
         self.show_pos_ops = tk.BooleanVar(value=True)
@@ -89,11 +90,21 @@ class KatamariEditor:
         self.show_slice = tk.BooleanVar(value=False)  # Hidden by default
         self.show_quat = tk.BooleanVar(value=True)
         self.show_pattern = tk.BooleanVar(value=True)
+        self.show_mesh = tk.BooleanVar(value=False)  # Hidden by default
+
+        # Mesh generator settings
+        self.mesh_grid_size = tk.DoubleVar(value=10.0)  # Averaging grid cell size
+        self.mesh_use_selection = tk.BooleanVar(value=False)
+        self.mesh_floor_priority = tk.DoubleVar(value=0.7)  # How much to prioritize floors
         
         # Theme system
         self.current_theme = tk.StringVar(value="Light")
         self.dark_theme = tk.BooleanVar(value=False)  # Legacy compatibility
-        
+        self.show_high_contrast_themes = tk.BooleanVar(value=True)  # Toggle for high-contrast themes
+
+        # High-contrast theme names (shown as "High Contrast" category in menu)
+        self.high_contrast_themes = {"Void", "Solar Flare", "Crimson Night", "Sakura"}
+
         # Comprehensive theme definitions with rich color palettes
         self.themes = {
             "Light": {
@@ -431,6 +442,7 @@ class KatamariEditor:
                     if 'show_slice' in prefs: self.show_slice.set(prefs['show_slice'] == 'True')
                     if 'show_quat' in prefs: self.show_quat.set(prefs['show_quat'] == 'True')
                     if 'show_pattern' in prefs: self.show_pattern.set(prefs['show_pattern'] == 'True')
+                    if 'show_mesh' in prefs: self.show_mesh.set(prefs['show_mesh'] == 'True')
                     
                     # Load panel positions
                     if 'batch_side' in prefs: self.batch_side.set(prefs['batch_side'])
@@ -441,6 +453,7 @@ class KatamariEditor:
                     if 'slice_side' in prefs: self.slice_side.set(prefs['slice_side'])
                     if 'quat_side' in prefs: self.quat_side.set(prefs['quat_side'])
                     if 'pattern_side' in prefs: self.pattern_side.set(prefs['pattern_side'])
+                    if 'mesh_side' in prefs: self.mesh_side.set(prefs['mesh_side'])
                     
                     # Load theme preference
                     if 'current_theme' in prefs and prefs['current_theme'] in self.themes:
@@ -450,6 +463,10 @@ class KatamariEditor:
                         if prefs['dark_theme'] == 'True':
                             self.current_theme.set('Obsidian')
                             self.dark_theme.set(True)
+
+                    # Load high-contrast themes visibility
+                    if 'show_high_contrast_themes' in prefs:
+                        self.show_high_contrast_themes.set(prefs['show_high_contrast_themes'] == 'True')
         except Exception as e:
             print(f"Error loading preferences: {e}")
 
@@ -468,6 +485,7 @@ class KatamariEditor:
                 f.write(f"show_slice={self.show_slice.get()}\n")
                 f.write(f"show_quat={self.show_quat.get()}\n")
                 f.write(f"show_pattern={self.show_pattern.get()}\n")
+                f.write(f"show_mesh={self.show_mesh.get()}\n")
                 
                 # Save panel positions
                 f.write(f"batch_side={self.batch_side.get()}\n")
@@ -478,9 +496,11 @@ class KatamariEditor:
                 f.write(f"slice_side={self.slice_side.get()}\n")
                 f.write(f"quat_side={self.quat_side.get()}\n")
                 f.write(f"pattern_side={self.pattern_side.get()}\n")
-                
+                f.write(f"mesh_side={self.mesh_side.get()}\n")
+
                 # Save theme
                 f.write(f"current_theme={self.current_theme.get()}\n")
+                f.write(f"show_high_contrast_themes={self.show_high_contrast_themes.get()}\n")
         except Exception as e:
             print(f"Error saving preferences: {e}")
 
@@ -811,6 +831,7 @@ class KatamariEditor:
         visibility_menu.add_checkbutton(label="Sort Items", variable=self.show_sort, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Filter & Slice", variable=self.show_slice, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Pattern Placer", variable=self.show_pattern, command=self.refresh_ui_layout)
+        visibility_menu.add_checkbutton(label="Mesh Generator", variable=self.show_mesh, command=self.refresh_ui_layout)
         
         view_menu.add_separator()
         
@@ -828,7 +849,8 @@ class KatamariEditor:
             ("Size Filter", self.size_filter_side),
             ("Sort Items", self.sort_side),
             ("Filter & Slice", self.slice_side),
-            ("Pattern Placer", self.pattern_side)
+            ("Pattern Placer", self.pattern_side),
+            ("Mesh Generator", self.mesh_side)
         ]
         
         for tool_name, var in tools:
@@ -838,32 +860,67 @@ class KatamariEditor:
                 tool_menu.add_radiobutton(label=loc, variable=var, value=loc, command=self.refresh_ui_layout)
         
         # Themes menu
-        themes_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Themes", menu=themes_menu)
-        
-        # Theme icons/descriptions
-        theme_info = {
+        self.themes_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Themes", menu=self.themes_menu)
+
+        # Store theme info for menu rebuilding
+        self.theme_info = {
             "Light": ("☀️", "Classic bright theme"),
             "Obsidian": ("🌑", "Modern dark - Catppuccin style"),
             "Olive Grove": ("🌿", "Forest green serenity"),
             "Deep Ocean": ("🌊", "Navy blue depths"),
-            "Crimson Night": ("🔥", "Rich reds and burgundy"),
+            "Crimson Night": ("🔥", "High Contrast - Rich reds"),
             "Burnished Oak": ("🌰", "Warm amber wood tones"),
             "Amethyst": ("💎", "Royal purple elegance"),
-            "Void": ("🕳️", "Pure black cyberpunk"),
-            "Solar Flare": ("☄️", "Fiery orange glow"),
-            "Sakura": ("🌸", "Soft pink blossoms"),
+            "Void": ("🕳️", "High Contrast - Pure black"),
+            "Solar Flare": ("☄️", "High Contrast - Fiery orange"),
+            "Sakura": ("🌸", "High Contrast - Soft pink"),
             "Northern Lights": ("🌌", "Aurora teal glow"),
         }
-        
+
+        self._rebuild_themes_menu()
+
+    def _rebuild_themes_menu(self):
+        """Rebuild themes menu based on high-contrast visibility toggle"""
+        self.themes_menu.delete(0, tk.END)
+
+        # Add toggle for high-contrast themes
+        self.themes_menu.add_checkbutton(
+            label="Show High Contrast Themes",
+            variable=self.show_high_contrast_themes,
+            command=self._rebuild_themes_menu
+        )
+        self.themes_menu.add_separator()
+
+        # Add standard themes first
         for theme_name in self.themes.keys():
-            icon, desc = theme_info.get(theme_name, ("🎨", theme_name))
-            themes_menu.add_radiobutton(
+            if theme_name in self.high_contrast_themes:
+                continue  # Skip high-contrast themes in first pass
+            icon, desc = self.theme_info.get(theme_name, ("🎨", theme_name))
+            self.themes_menu.add_radiobutton(
                 label=f"{icon}  {theme_name}",
                 variable=self.current_theme,
                 value=theme_name,
                 command=lambda t=theme_name: self.apply_theme(t)
             )
+
+        # Add high-contrast themes if enabled
+        if self.show_high_contrast_themes.get():
+            self.themes_menu.add_separator()
+            for theme_name in self.themes.keys():
+                if theme_name not in self.high_contrast_themes:
+                    continue  # Skip non-high-contrast themes
+                icon, desc = self.theme_info.get(theme_name, ("🎨", theme_name))
+                self.themes_menu.add_radiobutton(
+                    label=f"{icon}  {theme_name} (High Contrast)",
+                    variable=self.current_theme,
+                    value=theme_name,
+                    command=lambda t=theme_name: self.apply_theme(t)
+                )
+
+        # If current theme is high-contrast but toggle is off, switch to Light
+        if not self.show_high_contrast_themes.get() and self.current_theme.get() in self.high_contrast_themes:
+            self.apply_theme("Light")
 
     def refresh_ui_layout(self):
         for frame in self.tool_frames.values():
@@ -888,6 +945,7 @@ class KatamariEditor:
             ("pos_ops", self.pos_ops_side, self.build_position_operations, self.show_pos_ops),
             ("batch", self.batch_side, self.build_batch_editor, self.show_batch),
             ("pattern", self.pattern_side, self.build_pattern_placer, self.show_pattern),
+            ("mesh", self.mesh_side, self.build_mesh_generator, self.show_mesh),
         ]
         
         for key, side_var, builder_func, show_var in tools_config:
@@ -1457,6 +1515,228 @@ class KatamariEditor:
         self.plot_all()
         self.highlight_pts()
         messagebox.showinfo("Success", f"Applied {ptype} pattern to {count} entities.")
+
+    def build_mesh_generator(self, parent):
+        """Mesh generation panel for creating floor/wall meshes from entities"""
+        mesh_frame = tk.LabelFrame(parent, text="Mesh Generator", padx=5, pady=5, bg="#e6ffe6")
+
+        # Grid size for averaging
+        grid_frame = tk.Frame(mesh_frame, bg="#e6ffe6")
+        grid_frame.pack(fill=tk.X, pady=2)
+        tk.Label(grid_frame, text="Grid Size:", bg="#e6ffe6", font=("Arial", 8)).pack(side=tk.LEFT)
+        tk.Scale(grid_frame, from_=1, to=50, resolution=1, orient=tk.HORIZONTAL,
+                variable=self.mesh_grid_size, showvalue=1, bg="#e6ffe6", length=100).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Floor priority slider
+        priority_frame = tk.Frame(mesh_frame, bg="#e6ffe6")
+        priority_frame.pack(fill=tk.X, pady=2)
+        tk.Label(priority_frame, text="Floor Priority:", bg="#e6ffe6", font=("Arial", 8)).pack(side=tk.LEFT)
+        tk.Scale(priority_frame, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL,
+                variable=self.mesh_floor_priority, showvalue=1, bg="#e6ffe6", length=100).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Use selection checkbox
+        tk.Checkbutton(mesh_frame, text="Use Selection Only", variable=self.mesh_use_selection,
+                      bg="#e6ffe6").pack(anchor="w", pady=2)
+
+        # Info label
+        self.mesh_info_label = tk.Label(mesh_frame, text="Entities: 0 | Grid cells: 0",
+                                        bg="#e6ffe6", font=("Arial", 7), fg="#555")
+        self.mesh_info_label.pack(anchor="w", pady=2)
+
+        # Generate button
+        tk.Button(mesh_frame, text="GENERATE MESH", command=self.generate_mesh,
+                 bg="#4CAF50", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=3)
+
+        # Clear mesh button
+        tk.Button(mesh_frame, text="Clear Mesh", command=self.clear_mesh,
+                 bg="#f44336", fg="white", font=("Arial", 8)).pack(fill=tk.X, pady=1)
+
+        # Initialize mesh storage
+        self.generated_mesh = None
+
+        return mesh_frame
+
+    def generate_mesh(self):
+        """Generate a simplified mesh from entity positions with floor prioritization"""
+        # Get entities to use
+        if self.mesh_use_selection.get() and self.selected_indices:
+            indices = self.selected_indices
+        else:
+            indices = list(range(len(self.entities)))
+
+        if not indices:
+            messagebox.showwarning("Mesh", "No entities to generate mesh from.")
+            return
+
+        # Filter out entities with size > 9,000,000
+        filtered_indices = []
+        for i in indices:
+            size = self.get_size_from_db(self.entities[i])
+            if size <= 9000000:
+                filtered_indices.append(i)
+
+        if not filtered_indices:
+            messagebox.showwarning("Mesh", "All entities are over 9,000,000 in size.")
+            return
+
+        # Get positions
+        points = np.array([[self.entities[i]['x'], self.entities[i]['y'], self.entities[i]['z']]
+                          for i in filtered_indices])
+
+        # Average points into grid cells
+        grid_size = self.mesh_grid_size.get()
+        floor_priority = self.mesh_floor_priority.get()
+
+        # Create grid cells
+        x_min, x_max = points[:, 0].min(), points[:, 0].max()
+        z_min, z_max = points[:, 2].min(), points[:, 2].max()
+
+        # Calculate grid dimensions
+        nx = max(1, int((x_max - x_min) / grid_size) + 1)
+        nz = max(1, int((z_max - z_min) / grid_size) + 1)
+
+        # Initialize grid with empty lists
+        grid = {}
+        for pt in points:
+            gx = int((pt[0] - x_min) / grid_size) if grid_size > 0 else 0
+            gz = int((pt[2] - z_min) / grid_size) if grid_size > 0 else 0
+            key = (gx, gz)
+            if key not in grid:
+                grid[key] = []
+            grid[key].append(pt)
+
+        # Average points in each cell
+        averaged_points = []
+        for key, cell_points in grid.items():
+            cell_arr = np.array(cell_points)
+            avg_x = cell_arr[:, 0].mean()
+            avg_z = cell_arr[:, 2].mean()
+            # For Y, use floor priority: lower values weighted more heavily for floors
+            y_values = cell_arr[:, 1]
+            if floor_priority > 0.5:
+                # Prioritize lower Y (floors)
+                weight = floor_priority
+                avg_y = np.percentile(y_values, (1 - weight) * 50)
+            else:
+                # Prioritize higher Y (ceilings/walls)
+                weight = 1 - floor_priority
+                avg_y = np.percentile(y_values, weight * 100)
+            averaged_points.append([avg_x, avg_y, avg_z])
+
+        if len(averaged_points) < 3:
+            messagebox.showwarning("Mesh", "Need at least 3 grid cells to generate mesh.")
+            return
+
+        averaged_points = np.array(averaged_points)
+
+        # Create simple triangulation using Delaunay
+        try:
+            from scipy.spatial import Delaunay
+            # Project to XZ plane for 2D triangulation
+            points_2d = averaged_points[:, [0, 2]]
+            tri = Delaunay(points_2d)
+
+            # Filter triangles based on floor priority (remove steep walls if prioritizing floors)
+            triangles = []
+            for simplex in tri.simplices:
+                p1 = averaged_points[simplex[0]]
+                p2 = averaged_points[simplex[1]]
+                p3 = averaged_points[simplex[2]]
+
+                # Calculate triangle normal
+                v1 = p2 - p1
+                v2 = p3 - p1
+                normal = np.cross(v1, v2)
+                norm_len = np.linalg.norm(normal)
+                if norm_len > 0:
+                    normal = normal / norm_len
+                    # Check if it's more horizontal (floor) or vertical (wall)
+                    verticality = abs(normal[1])  # 1 = horizontal, 0 = vertical
+
+                    # Apply floor priority filtering
+                    if floor_priority > 0.5:
+                        # Keep more horizontal surfaces
+                        if verticality > (1 - floor_priority):
+                            triangles.append(simplex)
+                    else:
+                        # Keep more vertical surfaces
+                        if verticality < floor_priority + 0.5:
+                            triangles.append(simplex)
+                else:
+                    triangles.append(simplex)
+
+            self.generated_mesh = {
+                'points': averaged_points,
+                'triangles': triangles,
+                'source_count': len(filtered_indices),
+                'grid_cells': len(grid)
+            }
+
+            self._draw_mesh()
+            self.mesh_info_label.config(
+                text=f"Entities: {len(filtered_indices)} | Grid: {len(grid)} | Tris: {len(triangles)}"
+            )
+            self.lbl_info.config(text=f"Generated mesh with {len(triangles)} triangles from {len(filtered_indices)} entities")
+
+        except ImportError:
+            # Fallback without scipy - create simple convex hull-like mesh
+            messagebox.showinfo("Mesh", "scipy not available. Using simplified mesh generation.")
+            self.generated_mesh = {
+                'points': averaged_points,
+                'triangles': [],
+                'source_count': len(filtered_indices),
+                'grid_cells': len(grid)
+            }
+            self._draw_mesh_simple()
+            self.mesh_info_label.config(
+                text=f"Entities: {len(filtered_indices)} | Grid: {len(grid)} | Points: {len(averaged_points)}"
+            )
+
+    def _draw_mesh(self):
+        """Draw the generated mesh on the 3D plot"""
+        if not self.generated_mesh:
+            return
+
+        pts = self.generated_mesh['points']
+        triangles = self.generated_mesh['triangles']
+
+        if not triangles:
+            self._draw_mesh_simple()
+            return
+
+        # Create triangle vertices for Poly3DCollection
+        verts = []
+        for simplex in triangles:
+            tri_pts = pts[simplex]
+            # Transform to matplotlib coords: (-x, z, y)
+            transformed = [[-p[0], p[2], p[1]] for p in tri_pts]
+            verts.append(transformed)
+
+        poly = Poly3DCollection(verts, alpha=0.3, facecolors='lime', edgecolors='darkgreen', linewidths=0.5)
+        self.ax3d.add_collection3d(poly)
+        self.canvas.draw()
+
+    def _draw_mesh_simple(self):
+        """Draw mesh as point cloud when triangulation isn't available"""
+        if not self.generated_mesh:
+            return
+
+        pts = self.generated_mesh['points']
+        # Transform to matplotlib coords
+        xs = [-p[0] for p in pts]
+        zs = [p[2] for p in pts]
+        ys = [p[1] for p in pts]
+
+        self.ax3d.scatter(xs, zs, ys, c='lime', s=50, alpha=0.7, marker='s', edgecolors='darkgreen')
+        self.canvas.draw()
+
+    def clear_mesh(self):
+        """Clear the generated mesh"""
+        self.generated_mesh = None
+        if hasattr(self, 'mesh_info_label'):
+            self.mesh_info_label.config(text="Entities: 0 | Grid cells: 0")
+        self.plot_all()
+        self.lbl_info.config(text="Mesh cleared")
 
     def build_position_operations(self, parent):
         ops_frame = tk.LabelFrame(parent, text="Position Operations", padx=5, pady=5, bg="#e8f4f8")
@@ -2127,9 +2407,11 @@ class KatamariEditor:
             X, Z = np.meshgrid(x_range, z_range)
             
             X = -X
-            
+
             if abs(c) > 1e-6:
-                Y = -(a*X + b*Z + d) / c
+                # Plane eq: a*x + b*z + c*y + d = 0, where x = -X (matplotlib coords)
+                # So: a*(-X) + b*Z + c*Y + d = 0 => Y = (a*X - b*Z - d) / c
+                Y = (a*X - b*Z - d) / c
             elif abs(b) > 1e-6:
                 Y = np.zeros_like(X)
             else:
@@ -2148,6 +2430,10 @@ class KatamariEditor:
                 self.ax3d.add_collection3d(poly)
             elif abs(c) > 1e-6:
                 self.ax3d.plot_surface(X, Z, Y, color=color, alpha=p_alpha, shade=False)
+
+        # Draw generated mesh if exists
+        if hasattr(self, 'generated_mesh') and self.generated_mesh:
+            self._draw_mesh()
 
         # Restore view state only if it exists and initial view has been set
         if self.view_state['3d'] and self.initial_view_set:
