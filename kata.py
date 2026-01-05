@@ -547,6 +547,7 @@ class KatamariEditor:
         dialog = tk.Toplevel(self.root)
         dialog.title("Load Layout")
         dialog.geometry("300x400")
+        dialog.resizable(True, True)
         dialog.transient(self.root)
         dialog.grab_set()
 
@@ -2721,69 +2722,56 @@ class KatamariEditor:
         if not self.drag_start or not self.drag_initial_positions:
             return
 
-        if event.inaxes == self.ax3d and event.xdata is not None and event.ydata is not None:
-            # Get the current view transformation matrix
-            proj_matrix = self.ax3d.get_proj()
+        if event.inaxes != self.ax3d or not hasattr(event, 'x') or not hasattr(event, 'y'):
+            return
 
-            # For 3D view, we need to convert screen delta to world delta
-            # We'll use a simple approach: calculate the scale based on axis limits
-            if self.selected_indices and self.selected_indices[0] in self.drag_initial_positions:
-                # Get the axes limits to calculate scale
-                xlim = self.ax3d.get_xlim()
-                ylim = self.ax3d.get_ylim()
-                zlim = self.ax3d.get_zlim()
+        # Store initial screen position on first move
+        if not hasattr(self, 'drag_screen_start'):
+            self.drag_screen_start = (event.x, event.y)
+            return
 
-                # Get figure size in pixels
-                bbox = self.ax3d.get_window_extent()
-                width_px = bbox.width
-                height_px = bbox.height
+        # Calculate pixel delta from drag start
+        dx_pixels = event.x - self.drag_screen_start[0]
+        dy_pixels = event.y - self.drag_screen_start[1]
 
-                if width_px > 0 and height_px > 0:
-                    # Calculate screen space movement in pixels
-                    # Note: drag_start was stored as (xdata, ydata) from the initial event
-                    # For 3D, we need to work with pixel coordinates instead
+        # Get axes bounds to calculate pixel-to-world scale
+        xlim = self.ax3d.get_xlim()
+        ylim = self.ax3d.get_ylim()
+        zlim = self.ax3d.get_zlim()
+        bbox = self.ax3d.get_window_extent()
 
-                    # Get reference entity (first selected)
-                    ref_idx = self.selected_indices[0]
-                    ref_pos = self.drag_initial_positions[ref_idx]
+        if bbox.width <= 0 or bbox.height <= 0:
+            return
 
-                    # Project the reference position to screen at start
-                    x2d_start, y2d_start, _ = proj3d.proj_transform(-ref_pos[0], ref_pos[2], ref_pos[1], proj_matrix)
-                    screen_start = self.ax3d.transData.transform((x2d_start, y2d_start))
+        # Calculate scale factors (world units per pixel)
+        # xlim represents display X (which is -world_x)
+        # ylim represents display Y (which is world_z)
+        # zlim represents display Z (which is world_y)
+        display_x_scale = (xlim[1] - xlim[0]) / bbox.width
+        display_y_scale = (ylim[1] - ylim[0]) / bbox.height
 
-                    # Get current mouse position in screen coordinates
-                    if hasattr(event, 'x') and hasattr(event, 'y'):
-                        # Calculate pixel delta from the stored screen start position
-                        if not hasattr(self, 'drag_screen_start'):
-                            self.drag_screen_start = screen_start
+        # Convert pixel movement to display coordinate movement
+        dx_display = dx_pixels * display_x_scale
+        dy_display = dy_pixels * display_y_scale
 
-                        dx_pixel = event.x - self.drag_screen_start[0]
-                        dy_pixel = event.y - self.drag_screen_start[1]
+        # Convert display coordinates to world coordinates
+        # Display X = -World X, so dx_world_x = -dx_display
+        # Display Y = World Z, so dz_world = -dy_display (inverted because screen Y goes down)
+        dx_world = -dx_display
+        dz_world = -dy_display
 
-                        # Estimate world space scale (units per pixel)
-                        x_scale = (xlim[1] - xlim[0]) / width_px
-                        z_scale = (zlim[1] - zlim[0]) / height_px
+        # Apply movement to all selected entities
+        for idx in self.selected_indices:
+            if idx in self.drag_initial_positions:
+                init_pos = self.drag_initial_positions[idx]
+                self.entities[idx]['x'] = init_pos[0] + dx_world
+                self.entities[idx]['z'] = init_pos[2] + dz_world
+                # Keep Y (height) constant for now
+                self.entities[idx]['y'] = init_pos[1]
 
-                        # Convert pixel movement to world movement
-                        # In the display: X-axis is negated world X, Y-axis is world Z, Z-axis is world Y
-                        dx_world = -dx_pixel * x_scale * 0.5  # Negative because X is negated in display
-                        dz_world = -dy_pixel * z_scale * 0.5  # Vertical screen movement affects Z
-
-                        # Apply movement to all selected entities
-                        for idx in self.selected_indices:
-                            if idx in self.drag_initial_positions:
-                                init_pos = self.drag_initial_positions[idx]
-                                self.entities[idx]['x'] = init_pos[0] + dx_world
-                                self.entities[idx]['z'] = init_pos[2] + dz_world
-                                # Keep Y constant for horizontal movement
-                                # If shift is held, allow Y movement
-                                if event.key == 'shift':
-                                    dy_world = -dy_pixel * z_scale * 0.5
-                                    self.entities[idx]['y'] = init_pos[1] + dy_world
-
-                        # Redraw
-                        self.plot_all()
-                        self.highlight_pts()
+        # Redraw with highlighting
+        self.plot_all()
+        self.highlight_pts()
 
     def sync_selection_ui(self):
         self.is_updating_ui = True
@@ -2845,10 +2833,104 @@ class KatamariEditor:
             
             self.refresh_list()
 
+    def show_level_select_dialog(self, filepath):
+        """Show level selection dialog for large multi-level files"""
+        # Level names from d04Injector
+        LEVEL_NAMES = [
+            "UNUSED",  # Index 0
+            "TUTORIAL", "BIG-1_A", "BIG-2_A", "BIG-2_B", "BIG-2_C", "BIG-3_A", "BIG-3_B", "BIG-3_C",
+            "BIG-4_A", "BIG-4_B", "BIG-4_C", "BIG-4_D", "BIG-4_TIME", "BIG-5_A", "BIG-5_B", "BIG-5_C",
+            "BIG-5_D", "BIG-5_TIME", "BIG-6_A", "BIG-6_B", "BIG-6_C", "BIG-6_D", "BIG-6_TIME",
+            "BIG-7_A", "BIG-7_B", "BIG-8_A", "BIG-8_B", "BIG-8_C", "BIG-8_D", "BIG-8_E",
+            "BIG-9_A", "BIG-9_B", "BIG-9_C", "BIG-9_D", "BIG-9_E", "BIG-9_F", "BIG-9_G", "BIG-9_H",
+            "FOOD_A", "HOT_A", "HOT_B", "CAR_A", "CAR_B", "CAR_TIME",
+            "SHOPPING_A", "DRESS_A", "SEIZA_A", "SEIZA_C", "SEIZA_TIME",
+            "JUSTSIZE-1_A", "JUSTSIZE-2_A", "JUSTSIZE-3_A",
+            "OUSAMA_A", "OUSAMA_B", "OUSAMA_C", "OUSAMA_D", "OUSAMA_E", "OUSAMA_F", "OUSAMA_G",
+            "OUSAMA_H", "OUSAMA_I", "OUSAMA_J",
+            "BIG-10_A", "BIG-10_B", "BIG-11_A", "BIG-11_B", "BIG-11_C",
+            "JOIN-A-1_A", "JOIN-A-1_B", "JOIN-A-1_C", "JOIN-A-1_TIME",
+            "JOIN-A-2_A", "JOIN-A-2_B", "JOIN-A-2_C", "JOIN-A-2_D", "JOIN-A-2_TIME",
+            "JOIN-A-3_A", "JOIN-A-3_B", "JOIN-A-3_C", "JOIN-A-3_D", "JOIN-A-3_E",
+            # VS and Online modes (indices 82-86)
+            "VS-1_A", "VS-2_A", "VS-3_A", "ONLINE-A-4_A", "ONLINE-A-5_A",
+            # Reserved slots (indices 87-147)
+            *[f"EXTRA_{i}" for i in range(87, 148)],
+            # Index 148
+            "SELECTMAP_A"
+        ]
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Select Level to Load")
+        dialog.geometry("400x500")
+        dialog.resizable(True, True)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        tk.Label(dialog, text="This file contains multiple levels.\nSelect which level to load:",
+                pady=10, font=("Arial", 10, "bold")).pack()
+
+        # Create a frame with scrollbar
+        frame = tk.Frame(dialog)
+        frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=("Courier", 9))
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+
+        # Populate with level names (skip UNUSED at index 0)
+        for i, level_name in enumerate(LEVEL_NAMES[1:], start=1):
+            if not level_name.startswith("EXTRA_"):  # Skip placeholder entries
+                listbox.insert(tk.END, f"{i:3d}: {level_name}")
+
+        result = [None]
+
+        def load_selected():
+            selection = listbox.curselection()
+            if not selection:
+                messagebox.showwarning("No Selection", "Please select a level to load.")
+                return
+
+            # Get the level name from the selection
+            selected_text = listbox.get(selection[0])
+            level_name = selected_text.split(": ", 1)[1]
+            result[0] = level_name
+            dialog.destroy()
+
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        tk.Button(button_frame, text="Load Level", command=load_selected,
+                 bg="#4CAF50", fg="white", font=("Arial", 10, "bold")).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        tk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+
+        dialog.wait_window()
+        return result[0]
+
     def load_file(self):
         p = filedialog.askopenfilename(filetypes=[("DAT","*.dat")])
         if not p: return
-        
+
+        import os
+
+        # Check file size - if over 1GB, show level select
+        file_size = os.path.getsize(p)
+        if file_size > 1024 * 1024 * 1024:  # 1GB in bytes
+            # This is a large multi-level file, show level selector
+            selected_level = self.show_level_select_dialog(p)
+            if selected_level is None:
+                return  # User cancelled
+            # Extract the selected level from the file
+            # For now, we'll still load the whole file but notify the user
+            # In a full implementation, you'd extract just the selected level
+            messagebox.showinfo("Large File Detected",
+                f"File size: {file_size / (1024*1024*1024):.2f} GB\n"
+                f"Selected level: {selected_level}\n\n"
+                f"Note: Currently loading entire file. Level extraction coming soon.")
+
         # Clear existing data for fresh load
         self.loaded_maps = []
         self._load_map_file(p, is_primary=True)
@@ -3227,6 +3309,7 @@ class KatamariEditor:
             choice = tk.Toplevel(self.root)
             choice.title("Save Which Map?")
             choice.geometry("300x150")
+            choice.resizable(True, True)
             choice.transient(self.root)
             choice.grab_set()
             

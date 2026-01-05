@@ -11,7 +11,7 @@ KNOWN FILE STRUCTURE (hex offsets):
 - <SDataSet> (lighting):        0x1B7817 to 0x1B9080
 - Warp info:                    0x298017 to 0x2A9958
 
-Level order (84 total, index 0 is unused):
+Level order (149 total, index 0 is unused):
 UNUSED, TUTORIAL, BIG-1_A, BIG-2_A, BIG-2_B, BIG-2_C, BIG-3_A, BIG-3_B, BIG-3_C,
 BIG-4_A, BIG-4_B, BIG-4_C, BIG-4_D, BIG-4_TIME, BIG-5_A, BIG-5_B, BIG-5_C, BIG-5_D,
 BIG-5_TIME, BIG-6_A, BIG-6_B, BIG-6_C, BIG-6_D, BIG-6_TIME, BIG-7_A, BIG-7_B,
@@ -22,7 +22,8 @@ JUSTSIZE-3_A, OUSAMA_A, OUSAMA_B, OUSAMA_C, OUSAMA_D, OUSAMA_E, OUSAMA_F, OUSAMA
 OUSAMA_H, OUSAMA_I, OUSAMA_J, BIG-10_A, BIG-10_B, BIG-11_A, BIG-11_B, BIG-11_C,
 JOIN-A-1_A, JOIN-A-1_B, JOIN-A-1_C, JOIN-A-1_TIME, JOIN-A-2_A, JOIN-A-2_B,
 JOIN-A-2_C, JOIN-A-2_D, JOIN-A-2_TIME, JOIN-A-3_A, JOIN-A-3_B, JOIN-A-3_C,
-JOIN-A-3_D, JOIN-A-3_E, SELECTMAP_A
+JOIN-A-3_D, JOIN-A-3_E, VS-1_A, VS-2_A, VS-3_A, ONLINE-A-4_A, ONLINE-A-5_A,
+[87-147: Reserved/Unused], SELECTMAP_A (index 148)
 """
 
 import tkinter as tk
@@ -187,6 +188,11 @@ LEVEL_NAMES = [
     "JOIN-A-1_A", "JOIN-A-1_B", "JOIN-A-1_C", "JOIN-A-1_TIME",
     "JOIN-A-2_A", "JOIN-A-2_B", "JOIN-A-2_C", "JOIN-A-2_D", "JOIN-A-2_TIME",
     "JOIN-A-3_A", "JOIN-A-3_B", "JOIN-A-3_C", "JOIN-A-3_D", "JOIN-A-3_E",
+    # VS and Online modes (indices 82-86)
+    "VS-1_A", "VS-2_A", "VS-3_A", "ONLINE-A-4_A", "ONLINE-A-5_A",
+    # Reserved slots (indices 87-147)
+    *[f"EXTRA_{i}" for i in range(87, 148)],
+    # Index 148
     "SELECTMAP_A"
 ]
 
