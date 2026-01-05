@@ -90,13 +90,15 @@ class KatamariEditor:
         self.show_slice = tk.BooleanVar(value=False)  # Hidden by default
         self.show_quat = tk.BooleanVar(value=True)
         self.show_pattern = tk.BooleanVar(value=True)
+        self.show_scatter = tk.BooleanVar(value=False)  # Hidden by default (takes up space)
         
         # Theme system
         self.current_theme = tk.StringVar(value="Light")
         self.dark_theme = tk.BooleanVar(value=False)  # Legacy compatibility
-        
-        # Comprehensive theme definitions with rich color palettes
-        self.themes = {
+        self.gaudy_mode = tk.BooleanVar(value=True)  # True = gaudy, False = minimalist
+
+        # Gaudy theme definitions with vibrant 2000s colors
+        self.themes_gaudy = {
             "Light": {
                 "name": "Light",
                 "bg": "#e0f0ff", "fg": "#000066", "accent": "#ff0099",
@@ -307,7 +309,223 @@ class KatamariEditor:
                 "highlight_color": "#ff00ff",
             },
         }
-        
+
+        # Minimalist theme definitions with subdued, professional colors
+        self.themes_minimalist = {
+            "Light": {
+                "name": "Light",
+                "bg": "#f5f5f5", "fg": "#1a1a1a", "accent": "#0066cc",
+                "panel_bg": "#e8e8e8", "panel_fg": "#1a1a1a",
+                "frame_bg": "#dcdcdc", "labelframe_bg": "#e8e8e8",
+                "input_bg": "#ffffff", "input_fg": "#1a1a1a",
+                "button_bg": "#0066cc", "button_fg": "#ffffff",
+                "listbox_bg": "#ffffff", "listbox_fg": "#1a1a1a",
+                "listbox_select_bg": "#0066cc", "listbox_select_fg": "#ffffff",
+                "select_bg": "#0066cc", "select_fg": "#ffffff",
+                "border": "#b8b8b8", "sash": "#a0a0a0",
+                "info_bg": "#1e1e1e", "info_fg": "#50fa7b",
+                "toolbar_bg": "#e0e0e0",
+                "menu_bg": "#f5f5f5", "menu_fg": "#1a1a1a",
+                "graph_bg": "#fafafa", "graph_pane": "#f0f0f0",
+                "graph_grid": "#d0d0d0", "graph_text": "#404040", "graph_pane_alpha": 1.0,
+                "scrollbar_bg": "#d0d0d0", "scrollbar_fg": "#909090",
+                "highlight_color": "#ff6b6b",
+            },
+            "Obsidian": {
+                "name": "Obsidian",
+                "bg": "#1e1e2e", "fg": "#cdd6f4", "accent": "#89b4fa",
+                "panel_bg": "#181825", "panel_fg": "#cdd6f4",
+                "frame_bg": "#11111b", "labelframe_bg": "#181825",
+                "input_bg": "#313244", "input_fg": "#cdd6f4",
+                "button_bg": "#74c7ec", "button_fg": "#11111b",
+                "listbox_bg": "#11111b", "listbox_fg": "#cdd6f4",
+                "listbox_select_bg": "#74c7ec", "listbox_select_fg": "#11111b",
+                "select_bg": "#74c7ec", "select_fg": "#11111b",
+                "border": "#45475a", "sash": "#6c7086",
+                "info_bg": "#11111b", "info_fg": "#a6e3a1",
+                "toolbar_bg": "#181825",
+                "menu_bg": "#1e1e2e", "menu_fg": "#cdd6f4",
+                "graph_bg": "#11111b", "graph_pane": "#1e1e2e",
+                "graph_grid": "#45475a", "graph_text": "#bac2de", "graph_pane_alpha": 0.95,
+                "scrollbar_bg": "#313244", "scrollbar_fg": "#6c7086",
+                "highlight_color": "#f38ba8",
+            },
+            "Olive Grove": {
+                "name": "Olive Grove",
+                "bg": "#1d2a1d", "fg": "#d8e4d0", "accent": "#9dc88d",
+                "panel_bg": "#243024", "panel_fg": "#d8e4d0",
+                "frame_bg": "#1a251a", "labelframe_bg": "#243024",
+                "input_bg": "#2d3c2d", "input_fg": "#e4f0dc",
+                "button_bg": "#6b9b5b", "button_fg": "#ffffff",
+                "listbox_bg": "#161f16", "listbox_fg": "#d8e4d0",
+                "listbox_select_bg": "#6b9b5b", "listbox_select_fg": "#ffffff",
+                "select_bg": "#6b9b5b", "select_fg": "#ffffff",
+                "border": "#3d5030", "sash": "#4a6040",
+                "info_bg": "#141c14", "info_fg": "#b8e8a0",
+                "toolbar_bg": "#243024",
+                "menu_bg": "#1d2a1d", "menu_fg": "#d8e4d0",
+                "graph_bg": "#141c14", "graph_pane": "#1d2a1d",
+                "graph_grid": "#385830", "graph_text": "#a8c8a0", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#2d3c2d", "scrollbar_fg": "#4a6040",
+                "highlight_color": "#f0e060",
+            },
+            "Deep Ocean": {
+                "name": "Deep Ocean",
+                "bg": "#0c1829", "fg": "#c4d4e8", "accent": "#64b5f6",
+                "panel_bg": "#102030", "panel_fg": "#c4d4e8",
+                "frame_bg": "#0a1420", "labelframe_bg": "#102030",
+                "input_bg": "#1a3048", "input_fg": "#d0e0f0",
+                "button_bg": "#4090d0", "button_fg": "#ffffff",
+                "listbox_bg": "#081018", "listbox_fg": "#c4d4e8",
+                "listbox_select_bg": "#4090d0", "listbox_select_fg": "#ffffff",
+                "select_bg": "#4090d0", "select_fg": "#ffffff",
+                "border": "#204060", "sash": "#305080",
+                "info_bg": "#060c14", "info_fg": "#70e0ff",
+                "toolbar_bg": "#102030",
+                "menu_bg": "#0c1829", "menu_fg": "#c4d4e8",
+                "graph_bg": "#060c14", "graph_pane": "#0c1829",
+                "graph_grid": "#204868", "graph_text": "#8090b0", "graph_pane_alpha": 0.94,
+                "scrollbar_bg": "#1a3048", "scrollbar_fg": "#305080",
+                "highlight_color": "#ff9e64",
+            },
+            "Crimson Night": {
+                "name": "Crimson Night",
+                "bg": "#1c0c14", "fg": "#f0d8e0", "accent": "#e85080",
+                "panel_bg": "#281420", "panel_fg": "#f0d8e0",
+                "frame_bg": "#180a10", "labelframe_bg": "#281420",
+                "input_bg": "#382028", "input_fg": "#f4e0e8",
+                "button_bg": "#c04060", "button_fg": "#ffffff",
+                "listbox_bg": "#140810", "listbox_fg": "#f0d8e0",
+                "listbox_select_bg": "#c04060", "listbox_select_fg": "#ffffff",
+                "select_bg": "#c04060", "select_fg": "#ffffff",
+                "border": "#502838", "sash": "#683848",
+                "info_bg": "#100608", "info_fg": "#ff80a0",
+                "toolbar_bg": "#281420",
+                "menu_bg": "#1c0c14", "menu_fg": "#f0d8e0",
+                "graph_bg": "#100608", "graph_pane": "#1c0c14",
+                "graph_grid": "#582840", "graph_text": "#c090a0", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#382028", "scrollbar_fg": "#683848",
+                "highlight_color": "#50c0ff",
+            },
+            "Burnished Oak": {
+                "name": "Burnished Oak",
+                "bg": "#201810", "fg": "#f0e4d4", "accent": "#d8a050",
+                "panel_bg": "#2c2018", "panel_fg": "#f0e4d4",
+                "frame_bg": "#1c1410", "labelframe_bg": "#2c2018",
+                "input_bg": "#3c2c20", "input_fg": "#f4ece0",
+                "button_bg": "#a07020", "button_fg": "#ffffff",
+                "listbox_bg": "#181008", "listbox_fg": "#f0e4d4",
+                "listbox_select_bg": "#a07020", "listbox_select_fg": "#ffffff",
+                "select_bg": "#a07020", "select_fg": "#ffffff",
+                "border": "#504028", "sash": "#685838",
+                "info_bg": "#140c08", "info_fg": "#ffc860",
+                "toolbar_bg": "#2c2018",
+                "menu_bg": "#201810", "menu_fg": "#f0e4d4",
+                "graph_bg": "#140c08", "graph_pane": "#201810",
+                "graph_grid": "#584830", "graph_text": "#b8a080", "graph_pane_alpha": 0.92,
+                "scrollbar_bg": "#3c2c20", "scrollbar_fg": "#685838",
+                "highlight_color": "#70d0a0",
+            },
+            "Amethyst": {
+                "name": "Amethyst",
+                "bg": "#18101e", "fg": "#e8dcf4", "accent": "#c0a0d8",
+                "panel_bg": "#201828", "panel_fg": "#e8dcf4",
+                "frame_bg": "#140c18", "labelframe_bg": "#201828",
+                "input_bg": "#2c2038", "input_fg": "#f0e8f8",
+                "button_bg": "#8860a8", "button_fg": "#ffffff",
+                "listbox_bg": "#100810", "listbox_fg": "#e8dcf4",
+                "listbox_select_bg": "#8860a8", "listbox_select_fg": "#ffffff",
+                "select_bg": "#8860a8", "select_fg": "#ffffff",
+                "border": "#403050", "sash": "#584068",
+                "info_bg": "#0c0810", "info_fg": "#e0b0f0",
+                "toolbar_bg": "#201828",
+                "menu_bg": "#18101e", "menu_fg": "#e8dcf4",
+                "graph_bg": "#0c0810", "graph_pane": "#18101e",
+                "graph_grid": "#483858", "graph_text": "#a890b8", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#2c2038", "scrollbar_fg": "#584068",
+                "highlight_color": "#80d8a0",
+            },
+            "Void": {
+                "name": "Void",
+                "bg": "#000000", "fg": "#808080", "accent": "#00ff88",
+                "panel_bg": "#0a0a0a", "panel_fg": "#909090",
+                "frame_bg": "#050505", "labelframe_bg": "#0a0a0a",
+                "input_bg": "#141414", "input_fg": "#a0a0a0",
+                "button_bg": "#003020", "button_fg": "#00ff88",
+                "listbox_bg": "#050505", "listbox_fg": "#888888",
+                "listbox_select_bg": "#004030", "listbox_select_fg": "#00ff88",
+                "select_bg": "#004030", "select_fg": "#00ff88",
+                "border": "#1a1a1a", "sash": "#252525",
+                "info_bg": "#050505", "info_fg": "#00ff88",
+                "toolbar_bg": "#0a0a0a",
+                "menu_bg": "#000000", "menu_fg": "#808080",
+                "graph_bg": "#000000", "graph_pane": "#080808",
+                "graph_grid": "#181818", "graph_text": "#484848", "graph_pane_alpha": 0.98,
+                "scrollbar_bg": "#141414", "scrollbar_fg": "#252525",
+                "highlight_color": "#ff0066",
+            },
+            "Solar Flare": {
+                "name": "Solar Flare",
+                "bg": "#1c1208", "fg": "#fff0d8", "accent": "#ffa030",
+                "panel_bg": "#281c10", "panel_fg": "#fff0d8",
+                "frame_bg": "#180e08", "labelframe_bg": "#281c10",
+                "input_bg": "#382818", "input_fg": "#fff4e0",
+                "button_bg": "#d07010", "button_fg": "#ffffff",
+                "listbox_bg": "#140c04", "listbox_fg": "#fff0d8",
+                "listbox_select_bg": "#d07010", "listbox_select_fg": "#ffffff",
+                "select_bg": "#d07010", "select_fg": "#ffffff",
+                "border": "#503818", "sash": "#684820",
+                "info_bg": "#100804", "info_fg": "#ffc050",
+                "toolbar_bg": "#281c10",
+                "menu_bg": "#1c1208", "menu_fg": "#fff0d8",
+                "graph_bg": "#100804", "graph_pane": "#1c1208",
+                "graph_grid": "#584020", "graph_text": "#c09060", "graph_pane_alpha": 0.92,
+                "scrollbar_bg": "#382818", "scrollbar_fg": "#684820",
+                "highlight_color": "#60c0ff",
+            },
+            "Sakura": {
+                "name": "Sakura",
+                "bg": "#1e1418", "fg": "#f8e8f0", "accent": "#ffb7c5",
+                "panel_bg": "#281c22", "panel_fg": "#f8e8f0",
+                "frame_bg": "#1a1014", "labelframe_bg": "#281c22",
+                "input_bg": "#38282e", "input_fg": "#fff0f4",
+                "button_bg": "#d87088", "button_fg": "#ffffff",
+                "listbox_bg": "#140c10", "listbox_fg": "#f8e8f0",
+                "listbox_select_bg": "#d87088", "listbox_select_fg": "#ffffff",
+                "select_bg": "#d87088", "select_fg": "#ffffff",
+                "border": "#503848", "sash": "#684858",
+                "info_bg": "#100810", "info_fg": "#ffb0c0",
+                "toolbar_bg": "#281c22",
+                "menu_bg": "#1e1418", "menu_fg": "#f8e8f0",
+                "graph_bg": "#100810", "graph_pane": "#1e1418",
+                "graph_grid": "#584050", "graph_text": "#c0a0b0", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#38282e", "scrollbar_fg": "#684858",
+                "highlight_color": "#90e0c0",
+            },
+            "Northern Lights": {
+                "name": "Northern Lights",
+                "bg": "#0a1018", "fg": "#d0e8f0", "accent": "#80ffb0",
+                "panel_bg": "#101820", "panel_fg": "#d0e8f0",
+                "frame_bg": "#080c14", "labelframe_bg": "#101820",
+                "input_bg": "#182430", "input_fg": "#e0f0f8",
+                "button_bg": "#40a080", "button_fg": "#ffffff",
+                "listbox_bg": "#060a10", "listbox_fg": "#d0e8f0",
+                "listbox_select_bg": "#40a080", "listbox_select_fg": "#ffffff",
+                "select_bg": "#40a080", "select_fg": "#ffffff",
+                "border": "#284050", "sash": "#385868",
+                "info_bg": "#04080c", "info_fg": "#80ffc0",
+                "toolbar_bg": "#101820",
+                "menu_bg": "#0a1018", "menu_fg": "#d0e8f0",
+                "graph_bg": "#04080c", "graph_pane": "#0a1018",
+                "graph_grid": "#304858", "graph_text": "#80a0b0", "graph_pane_alpha": 0.94,
+                "scrollbar_bg": "#182430", "scrollbar_fg": "#385868",
+                "highlight_color": "#ff80a0",
+            },
+        }
+
+        # Active themes dictionary (points to gaudy or minimalist)
+        self.themes = self.themes_gaudy
+
         # Load saved preferences
         self.load_preferences()
         
@@ -443,7 +661,8 @@ class KatamariEditor:
                     if 'show_slice' in prefs: self.show_slice.set(prefs['show_slice'] == 'True')
                     if 'show_quat' in prefs: self.show_quat.set(prefs['show_quat'] == 'True')
                     if 'show_pattern' in prefs: self.show_pattern.set(prefs['show_pattern'] == 'True')
-                    
+                    if 'show_scatter' in prefs: self.show_scatter.set(prefs['show_scatter'] == 'True')
+
                     # Load panel positions
                     if 'batch_side' in prefs: self.batch_side.set(prefs['batch_side'])
                     if 'pos_ops_side' in prefs: self.pos_ops_side.set(prefs['pos_ops_side'])
@@ -455,6 +674,14 @@ class KatamariEditor:
                     if 'pattern_side' in prefs: self.pattern_side.set(prefs['pattern_side'])
                     
                     # Load theme preference
+                    if 'gaudy_mode' in prefs:
+                        self.gaudy_mode.set(prefs['gaudy_mode'] == 'True')
+                        # Switch themes dictionary based on mode
+                        if self.gaudy_mode.get():
+                            self.themes = self.themes_gaudy
+                        else:
+                            self.themes = self.themes_minimalist
+
                     if 'current_theme' in prefs and prefs['current_theme'] in self.themes:
                         self.current_theme.set(prefs['current_theme'])
                         self.dark_theme.set(prefs['current_theme'] != 'Light')
@@ -480,6 +707,7 @@ class KatamariEditor:
                 f.write(f"show_slice={self.show_slice.get()}\n")
                 f.write(f"show_quat={self.show_quat.get()}\n")
                 f.write(f"show_pattern={self.show_pattern.get()}\n")
+                f.write(f"show_scatter={self.show_scatter.get()}\n")
                 
                 # Save panel positions
                 f.write(f"batch_side={self.batch_side.get()}\n")
@@ -493,6 +721,7 @@ class KatamariEditor:
                 
                 # Save theme
                 f.write(f"current_theme={self.current_theme.get()}\n")
+                f.write(f"gaudy_mode={self.gaudy_mode.get()}\n")
         except Exception as e:
             print(f"Error saving preferences: {e}")
 
@@ -524,6 +753,7 @@ class KatamariEditor:
                 f.write(f"show_slice={self.show_slice.get()}\n")
                 f.write(f"show_quat={self.show_quat.get()}\n")
                 f.write(f"show_pattern={self.show_pattern.get()}\n")
+                f.write(f"show_scatter={self.show_scatter.get()}\n")
 
                 # Save panel positions
                 f.write(f"batch_side={self.batch_side.get()}\n")
@@ -665,7 +895,19 @@ class KatamariEditor:
         self._apply_menu_theme(theme)
         
         self.canvas.draw()
-    
+
+    def toggle_theme_style(self):
+        """Toggle between gaudy and minimalist theme styles"""
+        self.gaudy_mode.set(not self.gaudy_mode.get())
+        # Switch active themes dictionary
+        if self.gaudy_mode.get():
+            self.themes = self.themes_gaudy
+        else:
+            self.themes = self.themes_minimalist
+        # Reapply current theme with new style
+        self.apply_theme()
+        self.refresh_ui_layout()
+
     def _apply_graph_theme(self, theme):
         """Apply theme to 3D matplotlib graph"""
         self.figure.patch.set_facecolor(theme["graph_bg"])
@@ -959,6 +1201,7 @@ class KatamariEditor:
         
         visibility_menu.add_checkbutton(label="Batch Editor", variable=self.show_batch, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Position Operations", variable=self.show_pos_ops, command=self.refresh_ui_layout)
+        visibility_menu.add_checkbutton(label="  └─ Scatter Positions", variable=self.show_scatter, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Quaternion Viewer", variable=self.show_quat, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Plane Manager", variable=self.show_plane, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Size Filter", variable=self.show_size_filter, command=self.refresh_ui_layout)
@@ -1024,6 +1267,14 @@ class KatamariEditor:
                 value=theme_name,
                 command=lambda t=theme_name: self.apply_theme(t)
             )
+
+        # Theme style toggle
+        themes_menu.add_separator()
+        themes_menu.add_checkbutton(
+            label="🎨 Gaudy Mode (2000s Web Aesthetic)",
+            variable=self.gaudy_mode,
+            command=self.toggle_theme_style
+        )
 
     def refresh_ui_layout(self):
         for frame in self.tool_frames.values():
@@ -1316,6 +1567,10 @@ class KatamariEditor:
 
     def update_quaternion_display(self):
         """Update quaternion visualization"""
+        # Check if quaternion viewer has been built
+        if not hasattr(self, 'quat_label'):
+            return
+
         if not self.selected_indices:
             self.quat_label.config(text="X: 0.000  Y: 0.000  Z: 0.000  W: 1.000")
             self.is_updating_ui = True
@@ -1324,23 +1579,27 @@ class KatamariEditor:
             self.is_updating_ui = False
             self.draw_quaternion_viz(0, 0, 0, 1)
             return
-        
+
         ent = self.entities[self.selected_indices[-1]]
         x, y, z, w = ent['rx'], ent['ry'], ent['rz'], ent['rw']
-        
+
         self.quat_label.config(text=f"X: {x:.3f}  Y: {y:.3f}  Z: {z:.3f}  W: {w:.3f}")
-        
+
         roll, pitch, yaw = self.quaternion_to_euler(x, y, z, w)
-        
+
         self.is_updating_ui = True
         for i, val in enumerate([roll, pitch, yaw]):
             self.euler_vars[i].set(val)
         self.is_updating_ui = False
-        
+
         self.draw_quaternion_viz(x, y, z, w)
 
     def draw_quaternion_viz(self, x, y, z, w):
         """Draw 3D visualization of quaternion rotation"""
+        # Check if quaternion viewer has been built
+        if not hasattr(self, 'quat_ax'):
+            return
+
         self.quat_ax.clear()
         
         rot_matrix = self.quaternion_to_rotation_matrix(x, y, z, w)
@@ -1672,37 +1931,38 @@ class KatamariEditor:
         tk.Button(rotate_row, text="Y", command=lambda: self.rotate_positions("y"), bg="#9C27B0", fg="white", width=6).pack(side=tk.LEFT, padx=1)
         tk.Button(rotate_row, text="Z", command=lambda: self.rotate_positions("z"), bg="#9C27B0", fg="white", width=6).pack(side=tk.LEFT, padx=1)
 
-        # Scatter section
-        scatter_frame = tk.LabelFrame(ops_frame, text="Scatter Positions", bg="#e8f4f8", padx=2, pady=2)
-        scatter_frame.pack(fill=tk.X, pady=2)
+        # Scatter section (conditionally shown)
+        if self.show_scatter.get():
+            scatter_frame = tk.LabelFrame(ops_frame, text="Scatter Positions", bg="#e8f4f8", padx=2, pady=2)
+            scatter_frame.pack(fill=tk.X, pady=2)
 
-        # X scatter slider
-        x_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
-        x_scatter_row.pack(fill=tk.X, pady=1)
-        tk.Label(x_scatter_row, text="X:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
-        self.scatter_x = tk.DoubleVar(value=5.0)
-        tk.Scale(x_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
-                variable=self.scatter_x, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            # X scatter slider
+            x_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
+            x_scatter_row.pack(fill=tk.X, pady=1)
+            tk.Label(x_scatter_row, text="X:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
+            self.scatter_x = tk.DoubleVar(value=5.0)
+            tk.Scale(x_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
+                    variable=self.scatter_x, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # Y scatter slider
-        y_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
-        y_scatter_row.pack(fill=tk.X, pady=1)
-        tk.Label(y_scatter_row, text="Y:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
-        self.scatter_y = tk.DoubleVar(value=5.0)
-        tk.Scale(y_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
-                variable=self.scatter_y, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            # Y scatter slider
+            y_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
+            y_scatter_row.pack(fill=tk.X, pady=1)
+            tk.Label(y_scatter_row, text="Y:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
+            self.scatter_y = tk.DoubleVar(value=5.0)
+            tk.Scale(y_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
+                    variable=self.scatter_y, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # Z scatter slider
-        z_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
-        z_scatter_row.pack(fill=tk.X, pady=1)
-        tk.Label(z_scatter_row, text="Z:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
-        self.scatter_z = tk.DoubleVar(value=5.0)
-        tk.Scale(z_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
-                variable=self.scatter_z, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            # Z scatter slider
+            z_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
+            z_scatter_row.pack(fill=tk.X, pady=1)
+            tk.Label(z_scatter_row, text="Z:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
+            self.scatter_z = tk.DoubleVar(value=5.0)
+            tk.Scale(z_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
+                    variable=self.scatter_z, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # Apply scatter button
-        tk.Button(scatter_frame, text="APPLY SCATTER", command=self.scatter_positions,
-                 bg="#4CAF50", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=(3,0))
+            # Apply scatter button
+            tk.Button(scatter_frame, text="APPLY SCATTER", command=self.scatter_positions,
+                     bg="#4CAF50", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=(3,0))
 
         return ops_frame
 
