@@ -384,7 +384,18 @@ class KatamariEditor:
         self.figure = Figure(figsize=(10, 4), dpi=100)
         self.ax3d = self.figure.add_subplot(111, projection='3d')
         self.ax3d.set_visible(True)
-        
+
+        # Custom coordinate formatter for correct world coordinates display
+        def format_coord_3d(x, y):
+            # Convert display coordinates back to world coordinates
+            # Display X = -World X, so World X = -Display X
+            # Display Y = World Z, so World Z = Display Y
+            # We can't easily determine World Y from 2D coordinates in a 3D view
+            world_x = -x
+            world_z = y
+            return f'World X={world_x:.2f}, Z={world_z:.2f}'
+        self.ax3d.format_coord = format_coord_3d
+
         self.canvas = FigureCanvasTkAgg(self.figure, self.graph_container)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.toolbar = NavigationToolbar2Tk(self.canvas, self.graph_container)
@@ -1045,6 +1056,9 @@ class KatamariEditor:
                 self.tool_frames[key] = builder_func(parent)
                 side_pack = get_pack_side(side_var.get())
                 self.tool_frames[key].pack(fill=tk.X, padx=10, pady=5 if key == "batch" else 2, side=side_pack)
+
+        # Reapply theme to newly created UI elements
+        self.root.after(10, lambda: self.apply_theme())
 
     def build_plane_manager(self, parent):
         plane_frame = tk.LabelFrame(parent, text="Plane Manager", bg="#ddd", padx=5, pady=5)
@@ -2411,26 +2425,31 @@ class KatamariEditor:
             xs.append(px); ys.append(py); zs.append(pz)
             
         if self.ax3d.get_visible() and xs:
-            # Layer 1: Yellow outer ring (outline around entity)
+            # Use different colors when in drag mode
+            in_drag_mode = self.select_mode.get() == "DRAG" and self.is_dragging
+            outer_color = '#00FFFF' if in_drag_mode else '#FFD700'  # Cyan in drag mode, gold otherwise
+            inner_color = '#0099FF' if in_drag_mode else '#CC0000'  # Blue in drag mode, red otherwise
+
+            # Layer 1: Outer ring (outline around entity)
             self.highlights[0] = self.ax3d.scatter(
-                [-x for x in xs], zs, ys, 
+                [-x for x in xs], zs, ys,
                 c='none',
                 s=250,
                 marker='o',
-                edgecolors='#FFD700',  # Gold/yellow
-                linewidths=3, 
+                edgecolors=outer_color,
+                linewidths=3,
                 depthshade=False,
                 alpha=0.9
             )
-            
-            # Layer 2: Red circle (slightly smaller, inside the yellow)
+
+            # Layer 2: Inner circle (slightly smaller)
             self.highlights[1] = self.ax3d.scatter(
-                [-x for x in xs], zs, ys, 
+                [-x for x in xs], zs, ys,
                 c='none',
                 s=150,
                 marker='o',
-                edgecolors='#CC0000',  # Darker red, less harsh
-                linewidths=2.5, 
+                edgecolors=inner_color,
+                linewidths=2.5,
                 depthshade=False,
                 alpha=0.9
             )
@@ -2681,6 +2700,9 @@ class KatamariEditor:
                 for idx in self.selected_indices:
                     e = self.entities[idx]
                     self.drag_initial_positions[idx] = (e['x'], e['y'], e['z'])
+                # Lock view - store current toolbar mode and disable interaction
+                self.toolbar_mode_before_drag = self.toolbar.mode
+                self.toolbar.mode = ''  # Disable toolbar navigation
     
     def on_mouse_move(self, event):
         if not self.is_dragging or not event.inaxes or event.inaxes != self.active_ax: return
@@ -2700,6 +2722,10 @@ class KatamariEditor:
             self.drag_initial_positions = {}
             if hasattr(self, 'drag_screen_start'):
                 delattr(self, 'drag_screen_start')
+            # Restore toolbar mode after drag
+            if hasattr(self, 'toolbar_mode_before_drag'):
+                self.toolbar.mode = self.toolbar_mode_before_drag
+                delattr(self, 'toolbar_mode_before_drag')
             self.update_editor_fields()
         self.is_dragging = False
 
