@@ -63,9 +63,6 @@ class KatamariEditor:
         self.rect_patch = None
         self.active_ax = None
 
-        self.slice_axis = tk.StringVar(value="None")
-        self.slice_depth = tk.DoubleVar(value=0.0)
-        self.slice_thickness = tk.DoubleVar(value=20.0)
         self.axis_bounds = {'x':(-100,100), 'y':(-100,100), 'z':(-100,100)} 
         self.pos_sliders = []
         
@@ -77,7 +74,6 @@ class KatamariEditor:
         self.plane_side = tk.StringVar(value="Left")
         self.size_filter_side = tk.StringVar(value="Left")
         self.sort_side = tk.StringVar(value="Left")
-        self.slice_side = tk.StringVar(value="Left")
         self.quat_side = tk.StringVar(value="Right")
         self.pattern_side = tk.StringVar(value="Right")
         self.mesh_side = tk.StringVar(value="Left")
@@ -88,7 +84,6 @@ class KatamariEditor:
         self.show_plane = tk.BooleanVar(value=True)
         self.show_size_filter = tk.BooleanVar(value=False)  # Hidden by default
         self.show_sort = tk.BooleanVar(value=False)  # Hidden by default
-        self.show_slice = tk.BooleanVar(value=False)  # Hidden by default
         self.show_quat = tk.BooleanVar(value=True)
         self.show_pattern = tk.BooleanVar(value=True)
         self.show_scatter = tk.BooleanVar(value=False)  # Hidden by default (takes up space)
@@ -660,7 +655,6 @@ class KatamariEditor:
                     if 'show_plane' in prefs: self.show_plane.set(prefs['show_plane'] == 'True')
                     if 'show_size_filter' in prefs: self.show_size_filter.set(prefs['show_size_filter'] == 'True')
                     if 'show_sort' in prefs: self.show_sort.set(prefs['show_sort'] == 'True')
-                    if 'show_slice' in prefs: self.show_slice.set(prefs['show_slice'] == 'True')
                     if 'show_quat' in prefs: self.show_quat.set(prefs['show_quat'] == 'True')
                     if 'show_pattern' in prefs: self.show_pattern.set(prefs['show_pattern'] == 'True')
                     if 'show_scatter' in prefs: self.show_scatter.set(prefs['show_scatter'] == 'True')
@@ -672,7 +666,6 @@ class KatamariEditor:
                     if 'plane_side' in prefs: self.plane_side.set(prefs['plane_side'])
                     if 'size_filter_side' in prefs: self.size_filter_side.set(prefs['size_filter_side'])
                     if 'sort_side' in prefs: self.sort_side.set(prefs['sort_side'])
-                    if 'slice_side' in prefs: self.slice_side.set(prefs['slice_side'])
                     if 'quat_side' in prefs: self.quat_side.set(prefs['quat_side'])
                     if 'pattern_side' in prefs: self.pattern_side.set(prefs['pattern_side'])
                     if 'mesh_side' in prefs: self.mesh_side.set(prefs['mesh_side'])
@@ -708,7 +701,6 @@ class KatamariEditor:
                 f.write(f"show_plane={self.show_plane.get()}\n")
                 f.write(f"show_size_filter={self.show_size_filter.get()}\n")
                 f.write(f"show_sort={self.show_sort.get()}\n")
-                f.write(f"show_slice={self.show_slice.get()}\n")
                 f.write(f"show_quat={self.show_quat.get()}\n")
                 f.write(f"show_pattern={self.show_pattern.get()}\n")
                 f.write(f"show_scatter={self.show_scatter.get()}\n")
@@ -720,7 +712,6 @@ class KatamariEditor:
                 f.write(f"plane_side={self.plane_side.get()}\n")
                 f.write(f"size_filter_side={self.size_filter_side.get()}\n")
                 f.write(f"sort_side={self.sort_side.get()}\n")
-                f.write(f"slice_side={self.slice_side.get()}\n")
                 f.write(f"quat_side={self.quat_side.get()}\n")
                 f.write(f"pattern_side={self.pattern_side.get()}\n")
                 f.write(f"mesh_side={self.mesh_side.get()}\n")
@@ -756,7 +747,6 @@ class KatamariEditor:
                 f.write(f"show_plane={self.show_plane.get()}\n")
                 f.write(f"show_size_filter={self.show_size_filter.get()}\n")
                 f.write(f"show_sort={self.show_sort.get()}\n")
-                f.write(f"show_slice={self.show_slice.get()}\n")
                 f.write(f"show_quat={self.show_quat.get()}\n")
                 f.write(f"show_pattern={self.show_pattern.get()}\n")
                 f.write(f"show_scatter={self.show_scatter.get()}\n")
@@ -768,7 +758,6 @@ class KatamariEditor:
                 f.write(f"plane_side={self.plane_side.get()}\n")
                 f.write(f"size_filter_side={self.size_filter_side.get()}\n")
                 f.write(f"sort_side={self.sort_side.get()}\n")
-                f.write(f"slice_side={self.slice_side.get()}\n")
                 f.write(f"quat_side={self.quat_side.get()}\n")
                 f.write(f"pattern_side={self.pattern_side.get()}\n")
                 f.write(f"mesh_side={self.mesh_side.get()}\n")
@@ -831,7 +820,6 @@ class KatamariEditor:
                     if 'show_plane' in prefs: self.show_plane.set(prefs['show_plane'] == 'True')
                     if 'show_size_filter' in prefs: self.show_size_filter.set(prefs['show_size_filter'] == 'True')
                     if 'show_sort' in prefs: self.show_sort.set(prefs['show_sort'] == 'True')
-                    if 'show_slice' in prefs: self.show_slice.set(prefs['show_slice'] == 'True')
                     if 'show_quat' in prefs: self.show_quat.set(prefs['show_quat'] == 'True')
                     if 'show_pattern' in prefs: self.show_pattern.set(prefs['show_pattern'] == 'True')
                     if 'show_mesh' in prefs: self.show_mesh.set(prefs['show_mesh'] == 'True')
@@ -842,7 +830,6 @@ class KatamariEditor:
                     if 'plane_side' in prefs: self.plane_side.set(prefs['plane_side'])
                     if 'size_filter_side' in prefs: self.size_filter_side.set(prefs['size_filter_side'])
                     if 'sort_side' in prefs: self.sort_side.set(prefs['sort_side'])
-                    if 'slice_side' in prefs: self.slice_side.set(prefs['slice_side'])
                     if 'quat_side' in prefs: self.quat_side.set(prefs['quat_side'])
                     if 'pattern_side' in prefs: self.pattern_side.set(prefs['pattern_side'])
                     if 'mesh_side' in prefs: self.mesh_side.set(prefs['mesh_side'])
@@ -1216,7 +1203,6 @@ class KatamariEditor:
         visibility_menu.add_checkbutton(label="Plane Manager", variable=self.show_plane, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Size Filter", variable=self.show_size_filter, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Sort Items", variable=self.show_sort, command=self.refresh_ui_layout)
-        visibility_menu.add_checkbutton(label="Filter & Slice", variable=self.show_slice, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Pattern Placer", variable=self.show_pattern, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Mesh Generator", variable=self.show_mesh, command=self.refresh_ui_layout)
         
@@ -1241,7 +1227,6 @@ class KatamariEditor:
             ("Plane Manager", self.plane_side),
             ("Size Filter", self.size_filter_side),
             ("Sort Items", self.sort_side),
-            ("Filter & Slice", self.slice_side),
             ("Pattern Placer", self.pattern_side),
             ("Mesh Generator", self.mesh_side)
         ]
@@ -1306,7 +1291,6 @@ class KatamariEditor:
             ("plane", self.plane_side, self.build_plane_manager, self.show_plane),
             ("size_filter", self.size_filter_side, self.build_size_filter, self.show_size_filter),
             ("sort", self.sort_side, self.build_sort_tools, self.show_sort),
-            ("slice", self.slice_side, self.build_slice_tools, self.show_slice),
             ("quat", self.quat_side, self.build_quaternion_viewer, self.show_quat),
             ("pos_ops", self.pos_ops_side, self.build_position_operations, self.show_pos_ops),
             ("batch", self.batch_side, self.build_batch_editor, self.show_batch),
@@ -1411,21 +1395,6 @@ class KatamariEditor:
         sort_frame.columnconfigure(0, weight=1)
         sort_frame.columnconfigure(1, weight=1)
         return sort_frame
-
-    def build_slice_tools(self, parent):
-        slice_frame = tk.LabelFrame(parent, text="Filter & Slice", bg="#ddd", padx=5, pady=5)
-        
-        cb_slice = ttk.Combobox(slice_frame, textvariable=self.slice_axis, state="readonly", 
-                                values=["None", "Y-Axis (Height)", "Z-Axis (Depth)", "X-Axis (Width)"])
-        cb_slice.pack(fill=tk.X, pady=2)
-        cb_slice.bind("<<ComboboxSelected>>", self.on_slice_axis_change)
-        
-        self.scale_depth = tk.Scale(slice_frame, label="Position", orient=tk.HORIZONTAL, variable=self.slice_depth, showvalue=1, command=lambda v: self.on_slice_update())
-        self.scale_depth.pack(fill=tk.X)
-        self.scale_thick = tk.Scale(slice_frame, label="Thickness", from_=0.5, to=75.0, orient=tk.HORIZONTAL, variable=self.slice_thickness, resolution=0.5, command=lambda v: self.on_slice_update())
-        self.scale_thick.pack(fill=tk.X)
-        
-        return slice_frame
 
     def build_mesh_generator(self, parent):
         """Mesh generation panel for creating floor/surface meshes from entity points"""
@@ -1786,15 +1755,21 @@ class KatamariEditor:
 
     def update_quaternion_display(self):
         """Update quaternion visualization"""
-        # Check if quaternion viewer has been built
+        # Check if quaternion viewer has been built and widget still exists
         if not hasattr(self, 'quat_label'):
+            return
+        try:
+            if not self.quat_label.winfo_exists():
+                return
+        except tk.TclError:
             return
 
         if not self.selected_indices:
             self.quat_label.config(text="X: 0.000  Y: 0.000  Z: 0.000  W: 1.000")
             self.is_updating_ui = True
-            for var in self.euler_vars:
-                var.set(0.0)
+            if hasattr(self, 'euler_vars'):
+                for var in self.euler_vars:
+                    var.set(0.0)
             self.is_updating_ui = False
             self.draw_quaternion_viz(0, 0, 0, 1)
             return
@@ -1807,8 +1782,9 @@ class KatamariEditor:
         roll, pitch, yaw = self.quaternion_to_euler(x, y, z, w)
 
         self.is_updating_ui = True
-        for i, val in enumerate([roll, pitch, yaw]):
-            self.euler_vars[i].set(val)
+        if hasattr(self, 'euler_vars'):
+            for i, val in enumerate([roll, pitch, yaw]):
+                self.euler_vars[i].set(val)
         self.is_updating_ui = False
 
         self.draw_quaternion_viz(x, y, z, w)
@@ -2718,17 +2694,6 @@ class KatamariEditor:
         except:
             return base_colors
 
-    def on_slice_axis_change(self, e):
-        ax = self.slice_axis.get()
-        if ax == "None":
-            self.scale_depth.config(state="disabled"); self.scale_thick.config(state="disabled")
-        else:
-            self.scale_depth.config(state="normal"); self.scale_thick.config(state="normal")
-            key = 'y' if "Y-Axis" in ax else ('z' if "Z-Axis" in ax else 'x')
-            mn, mx = self.axis_bounds[key]
-            self.scale_depth.config(from_=mn-10, to=mx+10)
-        self.on_slice_update()
-
     def auto_zoom_to_fit(self):
         """Auto-zoom to fit all entities in view"""
         if not self.entities:
@@ -2856,7 +2821,7 @@ class KatamariEditor:
             is_active = (active_plane_idx and active_plane_idx[0] == idx)
             is_auto = p.get("auto", False)
             color = 'cyan' if is_auto else ('gold' if is_active else 'gray')
-            p_alpha = 0.2 if is_auto else (0.4 if is_active else 0.1)
+            p_alpha = 0.2 if is_auto else (0.4 if is_active else 0.3)
             
             if is_auto or abs(c) <= 1e-6:
                 flipped_pts = pts.copy()
@@ -2921,8 +2886,8 @@ class KatamariEditor:
                 except: pass
                 self.highlights[i] = None
         
-        if not self.selected_indices: 
-            self.canvas.draw_idle()
+        if not self.selected_indices:
+            self.canvas.draw()
             return
         
         xs, ys, zs = [], [], []
@@ -2965,8 +2930,8 @@ class KatamariEditor:
                 depthshade=False,
                 alpha=0.9
             )
-            
-        self.canvas.draw_idle()
+
+        self.canvas.draw()
 
     def swap_positions(self):
         if len(self.selected_indices) != 2:
@@ -3118,60 +3083,23 @@ class KatamariEditor:
              'parent_type':self.entry_parent_type, 'clash_type':self.entry_clash_type}
         return m[k].get()
 
-    def on_slice_update(self):
+    def refresh_display_filter(self):
+        """Refresh entity display based on size filter"""
         if not self.entities: return
-        mode = self.slice_axis.get()
-        if mode == "None": 
-            visible = list(range(len(self.entities)))
-        else:
-            tax = 'y' if "Y-Axis" in mode else ('z' if "Z-Axis" in mode else 'x')
-            d, t = self.slice_depth.get(), self.slice_thickness.get()
-            visible = [i for i, e in enumerate(self.entities) if (d-t) <= e[tax] <= (d+t)]
-        
+
+        visible = list(range(len(self.entities)))
+
         if self.size_filter_enabled.get():
             size_min = self.size_filter_min.get()
             size_max = self.size_filter_max.get()
             visible = [i for i in visible if size_min <= self.get_size_from_db(self.entities[i]) <= size_max]
-        
-        self.planes = [p for p in self.planes if not p.get("auto", False)]
-        
-        if mode != "None":
-            depth = self.slice_depth.get()
-            
-            xb = self.axis_bounds['x']
-            yb = self.axis_bounds['y']
-            zb = self.axis_bounds['z']
-            
-            if "Y-Axis" in mode:
-                coeffs = (0, 0, 1, -depth)
-                pts = np.array([
-                    [xb[0], zb[0], depth],
-                    [xb[1], zb[0], depth],
-                    [xb[1], zb[1], depth],
-                    [xb[0], zb[1], depth]
-                ])
-            elif "Z-Axis" in mode:
-                coeffs = (0, 1, 0, -depth)
-                pts = np.array([
-                    [xb[0], depth, yb[0]],
-                    [xb[1], depth, yb[0]],
-                    [xb[1], depth, yb[1]],
-                    [xb[0], depth, yb[1]]
-                ])
-            else:
-                coeffs = (1, 0, 0, -depth)
-                pts = np.array([
-                    [depth, zb[0], yb[0]],
-                    [depth, zb[1], yb[0]],
-                    [depth, zb[1], yb[1]],
-                    [depth, zb[0], yb[1]]
-                ])
-
-            self.planes.append({"name": "Slice Plane [Auto]", "coeffs": coeffs, "points": pts, "auto": True})
-            self.refresh_plane_list()
 
         self.display_mapping = visible
         self.refresh_list(); self.plot_all(); self.highlight_pts()
+
+    # Alias for backwards compatibility
+    def on_slice_update(self):
+        self.refresh_display_filter()
 
     def on_graph_pick(self, event):
         if self.toolbar.mode != "" or self.select_mode.get() != "CLICK": return
