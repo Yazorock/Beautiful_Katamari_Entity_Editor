@@ -20,6 +20,7 @@ class KatamariEditor:
         self.root = root
         self.root.title("Katamari Editor 19.3 - Multi-Map Support")
         self.root.geometry("1600x1000")
+        self.root.resizable(True, True)  # Ensure window is resizable
 
         # --- Undo System ---
         self.undo_stack = []
@@ -61,7 +62,6 @@ class KatamariEditor:
         self.drag_start = None
         self.rect_patch = None
         self.active_ax = None
-        self.drag_initial_positions = {}  # Store initial positions when dragging in DRAG mode
 
         self.slice_axis = tk.StringVar(value="None")
         self.slice_depth = tk.DoubleVar(value=0.0)
@@ -378,7 +378,7 @@ class KatamariEditor:
         tk.Button(self.viz_row2, text="⊙ Zoom Fit", command=self.auto_zoom_to_fit, bg="#4CAF50", fg="white", font=("Arial", 8, "bold")).pack(side=tk.LEFT, padx=5)
 
         tk.Label(self.viz_row2, text="| Select:", bg="#ccc").pack(side=tk.LEFT, padx=(10,0))
-        for m in ["NONE", "CLICK", "PAINT", "DRAG"]:
+        for m in ["NONE", "CLICK", "PAINT"]:
             tk.Radiobutton(self.viz_row2, text=m.title(), variable=self.select_mode, value=m, bg="#ccc").pack(side=tk.LEFT)
 
         self.figure = Figure(figsize=(10, 4), dpi=100)
@@ -2425,18 +2425,13 @@ class KatamariEditor:
             xs.append(px); ys.append(py); zs.append(pz)
             
         if self.ax3d.get_visible() and xs:
-            # Use different colors when in drag mode
-            in_drag_mode = self.select_mode.get() == "DRAG" and self.is_dragging
-            outer_color = '#00FFFF' if in_drag_mode else '#FFD700'  # Cyan in drag mode, gold otherwise
-            inner_color = '#0099FF' if in_drag_mode else '#CC0000'  # Blue in drag mode, red otherwise
-
             # Layer 1: Outer ring (outline around entity)
             self.highlights[0] = self.ax3d.scatter(
                 [-x for x in xs], zs, ys,
                 c='none',
                 s=250,
                 marker='o',
-                edgecolors=outer_color,
+                edgecolors='#FFD700',  # Gold
                 linewidths=3,
                 depthshade=False,
                 alpha=0.9
@@ -2448,7 +2443,7 @@ class KatamariEditor:
                 c='none',
                 s=150,
                 marker='o',
-                edgecolors=inner_color,
+                edgecolors='#CC0000',  # Red
                 linewidths=2.5,
                 depthshade=False,
                 alpha=0.9
@@ -2692,41 +2687,13 @@ class KatamariEditor:
 
         if mode == "PAINT":
             self.do_paint_select(event)
-        elif mode == "DRAG":
-            # Store initial positions of selected entities
-            if self.selected_indices:
-                self.save_undo_state("Drag Entities")
-                self.drag_initial_positions = {}
-                for idx in self.selected_indices:
-                    e = self.entities[idx]
-                    self.drag_initial_positions[idx] = (e['x'], e['y'], e['z'])
-                # Lock view - store current toolbar mode and disable interaction
-                self.toolbar_mode_before_drag = self.toolbar.mode
-                self.toolbar.mode = ''  # Disable toolbar navigation
-    
+
     def on_mouse_move(self, event):
         if not self.is_dragging or not event.inaxes or event.inaxes != self.active_ax: return
-        mode = self.select_mode.get()
-        if mode == "PAINT":
+        if self.select_mode.get() == "PAINT":
             self.do_paint_select(event)
-        elif mode == "DRAG":
-            self.do_drag_move(event)
 
     def on_mouse_up(self, event):
-        mode = self.select_mode.get()
-        if mode == "DRAG" and self.is_dragging and self.drag_initial_positions:
-            # Sync all dragged entities' raw data
-            for idx in self.selected_indices:
-                if idx in self.entities:
-                    self._sync_entity_raw(self.entities[idx])
-            self.drag_initial_positions = {}
-            if hasattr(self, 'drag_screen_start'):
-                delattr(self, 'drag_screen_start')
-            # Restore toolbar mode after drag
-            if hasattr(self, 'toolbar_mode_before_drag'):
-                self.toolbar.mode = self.toolbar_mode_before_drag
-                delattr(self, 'toolbar_mode_before_drag')
-            self.update_editor_fields()
         self.is_dragging = False
 
     def do_paint_select(self, event):
@@ -2742,62 +2709,6 @@ class KatamariEditor:
                     if ctrl and midx in self.selected_indices: self.selected_indices.remove(midx); changed = True
                     elif not ctrl and midx not in self.selected_indices: self.selected_indices.append(midx); changed = True
         if changed: self.sync_selection_ui()
-
-    def do_drag_move(self, event):
-        """Handle dragging entities to move them in 3D space"""
-        if not self.drag_start or not self.drag_initial_positions:
-            return
-
-        if event.inaxes != self.ax3d or not hasattr(event, 'x') or not hasattr(event, 'y'):
-            return
-
-        # Store initial screen position on first move
-        if not hasattr(self, 'drag_screen_start'):
-            self.drag_screen_start = (event.x, event.y)
-            return
-
-        # Calculate pixel delta from drag start
-        dx_pixels = event.x - self.drag_screen_start[0]
-        dy_pixels = event.y - self.drag_screen_start[1]
-
-        # Get axes bounds to calculate pixel-to-world scale
-        xlim = self.ax3d.get_xlim()
-        ylim = self.ax3d.get_ylim()
-        zlim = self.ax3d.get_zlim()
-        bbox = self.ax3d.get_window_extent()
-
-        if bbox.width <= 0 or bbox.height <= 0:
-            return
-
-        # Calculate scale factors (world units per pixel)
-        # xlim represents display X (which is -world_x)
-        # ylim represents display Y (which is world_z)
-        # zlim represents display Z (which is world_y)
-        display_x_scale = (xlim[1] - xlim[0]) / bbox.width
-        display_y_scale = (ylim[1] - ylim[0]) / bbox.height
-
-        # Convert pixel movement to display coordinate movement
-        dx_display = dx_pixels * display_x_scale
-        dy_display = dy_pixels * display_y_scale
-
-        # Convert display coordinates to world coordinates
-        # Display X = -World X, so dx_world_x = -dx_display
-        # Display Y = World Z, so dz_world = -dy_display (inverted because screen Y goes down)
-        dx_world = -dx_display
-        dz_world = -dy_display
-
-        # Apply movement to all selected entities
-        for idx in self.selected_indices:
-            if idx in self.drag_initial_positions:
-                init_pos = self.drag_initial_positions[idx]
-                self.entities[idx]['x'] = init_pos[0] + dx_world
-                self.entities[idx]['z'] = init_pos[2] + dz_world
-                # Keep Y (height) constant for now
-                self.entities[idx]['y'] = init_pos[1]
-
-        # Redraw with highlighting
-        self.plot_all()
-        self.highlight_pts()
 
     def sync_selection_ui(self):
         self.is_updating_ui = True
