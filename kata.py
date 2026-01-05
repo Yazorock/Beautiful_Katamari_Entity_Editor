@@ -80,6 +80,7 @@ class KatamariEditor:
         self.slice_side = tk.StringVar(value="Left")
         self.quat_side = tk.StringVar(value="Right")
         self.pattern_side = tk.StringVar(value="Right")
+        self.mesh_side = tk.StringVar(value="Left")
         
         # Visibility toggles for each panel
         self.show_batch = tk.BooleanVar(value=True)
@@ -91,6 +92,7 @@ class KatamariEditor:
         self.show_quat = tk.BooleanVar(value=True)
         self.show_pattern = tk.BooleanVar(value=True)
         self.show_scatter = tk.BooleanVar(value=False)  # Hidden by default (takes up space)
+        self.show_mesh = tk.BooleanVar(value=False)  # Mesh generator hidden by default
         
         # Theme system
         self.current_theme = tk.StringVar(value="Light")
@@ -662,6 +664,7 @@ class KatamariEditor:
                     if 'show_quat' in prefs: self.show_quat.set(prefs['show_quat'] == 'True')
                     if 'show_pattern' in prefs: self.show_pattern.set(prefs['show_pattern'] == 'True')
                     if 'show_scatter' in prefs: self.show_scatter.set(prefs['show_scatter'] == 'True')
+                    if 'show_mesh' in prefs: self.show_mesh.set(prefs['show_mesh'] == 'True')
 
                     # Load panel positions
                     if 'batch_side' in prefs: self.batch_side.set(prefs['batch_side'])
@@ -672,7 +675,8 @@ class KatamariEditor:
                     if 'slice_side' in prefs: self.slice_side.set(prefs['slice_side'])
                     if 'quat_side' in prefs: self.quat_side.set(prefs['quat_side'])
                     if 'pattern_side' in prefs: self.pattern_side.set(prefs['pattern_side'])
-                    
+                    if 'mesh_side' in prefs: self.mesh_side.set(prefs['mesh_side'])
+
                     # Load theme preference
                     if 'gaudy_mode' in prefs:
                         self.gaudy_mode.set(prefs['gaudy_mode'] == 'True')
@@ -708,7 +712,8 @@ class KatamariEditor:
                 f.write(f"show_quat={self.show_quat.get()}\n")
                 f.write(f"show_pattern={self.show_pattern.get()}\n")
                 f.write(f"show_scatter={self.show_scatter.get()}\n")
-                
+                f.write(f"show_mesh={self.show_mesh.get()}\n")
+
                 # Save panel positions
                 f.write(f"batch_side={self.batch_side.get()}\n")
                 f.write(f"pos_ops_side={self.pos_ops_side.get()}\n")
@@ -718,7 +723,8 @@ class KatamariEditor:
                 f.write(f"slice_side={self.slice_side.get()}\n")
                 f.write(f"quat_side={self.quat_side.get()}\n")
                 f.write(f"pattern_side={self.pattern_side.get()}\n")
-                
+                f.write(f"mesh_side={self.mesh_side.get()}\n")
+
                 # Save theme
                 f.write(f"current_theme={self.current_theme.get()}\n")
                 f.write(f"gaudy_mode={self.gaudy_mode.get()}\n")
@@ -754,6 +760,7 @@ class KatamariEditor:
                 f.write(f"show_quat={self.show_quat.get()}\n")
                 f.write(f"show_pattern={self.show_pattern.get()}\n")
                 f.write(f"show_scatter={self.show_scatter.get()}\n")
+                f.write(f"show_mesh={self.show_mesh.get()}\n")
 
                 # Save panel positions
                 f.write(f"batch_side={self.batch_side.get()}\n")
@@ -764,6 +771,7 @@ class KatamariEditor:
                 f.write(f"slice_side={self.slice_side.get()}\n")
                 f.write(f"quat_side={self.quat_side.get()}\n")
                 f.write(f"pattern_side={self.pattern_side.get()}\n")
+                f.write(f"mesh_side={self.mesh_side.get()}\n")
 
             messagebox.showinfo("Success", f"Layout '{layout_name}' saved successfully!")
         except Exception as e:
@@ -826,6 +834,7 @@ class KatamariEditor:
                     if 'show_slice' in prefs: self.show_slice.set(prefs['show_slice'] == 'True')
                     if 'show_quat' in prefs: self.show_quat.set(prefs['show_quat'] == 'True')
                     if 'show_pattern' in prefs: self.show_pattern.set(prefs['show_pattern'] == 'True')
+                    if 'show_mesh' in prefs: self.show_mesh.set(prefs['show_mesh'] == 'True')
 
                     # Load panel positions
                     if 'batch_side' in prefs: self.batch_side.set(prefs['batch_side'])
@@ -836,6 +845,7 @@ class KatamariEditor:
                     if 'slice_side' in prefs: self.slice_side.set(prefs['slice_side'])
                     if 'quat_side' in prefs: self.quat_side.set(prefs['quat_side'])
                     if 'pattern_side' in prefs: self.pattern_side.set(prefs['pattern_side'])
+                    if 'mesh_side' in prefs: self.mesh_side.set(prefs['mesh_side'])
 
                     # Refresh UI to apply changes
                     self.refresh_ui_layout()
@@ -897,8 +907,8 @@ class KatamariEditor:
         self.canvas.draw()
 
     def toggle_theme_style(self):
-        """Toggle between gaudy and minimalist theme styles"""
-        self.gaudy_mode.set(not self.gaudy_mode.get())
+        """Toggle between high contrast and minimalist theme styles"""
+        # Note: checkbutton already toggles the variable, so we just read the current value
         # Switch active themes dictionary
         if self.gaudy_mode.get():
             self.themes = self.themes_gaudy
@@ -1208,6 +1218,7 @@ class KatamariEditor:
         visibility_menu.add_checkbutton(label="Sort Items", variable=self.show_sort, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Filter & Slice", variable=self.show_slice, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Pattern Placer", variable=self.show_pattern, command=self.refresh_ui_layout)
+        visibility_menu.add_checkbutton(label="Mesh Generator", variable=self.show_mesh, command=self.refresh_ui_layout)
         
         view_menu.add_separator()
 
@@ -1231,7 +1242,8 @@ class KatamariEditor:
             ("Size Filter", self.size_filter_side),
             ("Sort Items", self.sort_side),
             ("Filter & Slice", self.slice_side),
-            ("Pattern Placer", self.pattern_side)
+            ("Pattern Placer", self.pattern_side),
+            ("Mesh Generator", self.mesh_side)
         ]
         
         for tool_name, var in tools:
@@ -1271,7 +1283,7 @@ class KatamariEditor:
         # Theme style toggle
         themes_menu.add_separator()
         themes_menu.add_checkbutton(
-            label="🎨 Gaudy Mode (2000s Web Aesthetic)",
+            label="🎨 High Contrast Mode",
             variable=self.gaudy_mode,
             command=self.toggle_theme_style
         )
@@ -1299,6 +1311,7 @@ class KatamariEditor:
             ("pos_ops", self.pos_ops_side, self.build_position_operations, self.show_pos_ops),
             ("batch", self.batch_side, self.build_batch_editor, self.show_batch),
             ("pattern", self.pattern_side, self.build_pattern_placer, self.show_pattern),
+            ("mesh", self.mesh_side, self.build_mesh_generator, self.show_mesh),
         ]
         
         for key, side_var, builder_func, show_var in tools_config:
@@ -1413,6 +1426,212 @@ class KatamariEditor:
         self.scale_thick.pack(fill=tk.X)
         
         return slice_frame
+
+    def build_mesh_generator(self, parent):
+        """Mesh generation panel for creating floor/surface meshes from entity points"""
+        mesh_frame = tk.LabelFrame(parent, text="Mesh Generator", bg="#ddd", padx=5, pady=5)
+
+        # Grid resolution
+        res_row = tk.Frame(mesh_frame, bg="#ddd")
+        res_row.pack(fill=tk.X, pady=2)
+        tk.Label(res_row, text="Grid Resolution:", bg="#ddd", font=("Arial", 8, "bold")).pack(side=tk.LEFT)
+        self.mesh_resolution = tk.IntVar(value=20)
+        tk.Scale(res_row, from_=5, to=100, orient=tk.HORIZONTAL, variable=self.mesh_resolution,
+                 showvalue=1, bg="#ddd", length=100).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Averaging strength
+        avg_row = tk.Frame(mesh_frame, bg="#ddd")
+        avg_row.pack(fill=tk.X, pady=2)
+        tk.Label(avg_row, text="Averaging:", bg="#ddd", font=("Arial", 8, "bold")).pack(side=tk.LEFT)
+        self.mesh_averaging = tk.DoubleVar(value=1.5)
+        tk.Scale(avg_row, from_=0.5, to=10.0, resolution=0.5, orient=tk.HORIZONTAL,
+                 variable=self.mesh_averaging, showvalue=1, bg="#ddd", length=100).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Options
+        options_frame = tk.Frame(mesh_frame, bg="#ddd")
+        options_frame.pack(fill=tk.X, pady=2)
+
+        self.mesh_selected_only = tk.BooleanVar(value=False)
+        tk.Checkbutton(options_frame, text="Selected only", variable=self.mesh_selected_only,
+                       bg="#ddd").pack(anchor="w")
+
+        self.mesh_exclude_large = tk.BooleanVar(value=True)
+        tk.Checkbutton(options_frame, text="Exclude size >9M", variable=self.mesh_exclude_large,
+                       bg="#ddd").pack(anchor="w")
+
+        self.mesh_floor_priority = tk.BooleanVar(value=True)
+        tk.Checkbutton(options_frame, text="Prioritize floors", variable=self.mesh_floor_priority,
+                       bg="#ddd").pack(anchor="w")
+
+        # Mesh opacity
+        alpha_row = tk.Frame(mesh_frame, bg="#ddd")
+        alpha_row.pack(fill=tk.X, pady=2)
+        tk.Label(alpha_row, text="Mesh Alpha:", bg="#ddd").pack(side=tk.LEFT)
+        self.mesh_alpha = tk.DoubleVar(value=0.5)
+        tk.Scale(alpha_row, from_=0.1, to=1.0, resolution=0.1, orient=tk.HORIZONTAL,
+                 variable=self.mesh_alpha, showvalue=1, bg="#ddd", length=80).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Buttons
+        btn_frame = tk.Frame(mesh_frame, bg="#ddd")
+        btn_frame.pack(fill=tk.X, pady=5)
+
+        tk.Button(btn_frame, text="Generate Mesh", command=self.generate_mesh,
+                  bg="#4CAF50", fg="white", font=("Arial", 8, "bold")).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
+        tk.Button(btn_frame, text="Clear Mesh", command=self.clear_mesh,
+                  bg="#f44336", fg="white", font=("Arial", 8, "bold")).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
+
+        # Initialize mesh data storage
+        self.generated_mesh = None
+        self.mesh_collection = None
+
+        return mesh_frame
+
+    def generate_mesh(self):
+        """Generate a floor/surface mesh from entity positions"""
+        from scipy.interpolate import griddata
+
+        if not self.entities:
+            messagebox.showwarning("Error", "No entities loaded.")
+            return
+
+        # Get indices to use
+        if self.mesh_selected_only.get():
+            if not self.selected_indices:
+                messagebox.showwarning("Error", "No entities selected.")
+                return
+            indices = self.selected_indices
+        else:
+            indices = self.display_mapping if self.display_mapping else list(range(len(self.entities)))
+
+        # Filter by size if enabled
+        if self.mesh_exclude_large.get():
+            filtered_indices = []
+            for i in indices:
+                size = self.get_size_from_db(self.entities[i])
+                if size <= 9000000:
+                    filtered_indices.append(i)
+            indices = filtered_indices
+
+        if len(indices) < 4:
+            messagebox.showwarning("Error", "Need at least 4 entities to generate mesh.")
+            return
+
+        # Collect points
+        points = []
+        for i in indices:
+            e = self.entities[i]
+            points.append([e['x'], e['y'], e['z']])
+        points = np.array(points)
+
+        # Averaging: reduce point density by clustering nearby points
+        averaging = self.mesh_averaging.get()
+        if averaging > 0.5:
+            averaged_points = self._average_points(points, averaging)
+        else:
+            averaged_points = points
+
+        if len(averaged_points) < 4:
+            messagebox.showwarning("Error", "Too few points after averaging.")
+            return
+
+        resolution = self.mesh_resolution.get()
+        floor_priority = self.mesh_floor_priority.get()
+
+        try:
+            if floor_priority:
+                # Create floor mesh: project onto XZ plane, interpolate Y
+                x = averaged_points[:, 0]
+                y = averaged_points[:, 1]  # Height/altitude
+                z = averaged_points[:, 2]
+
+                # Create grid
+                x_min, x_max = x.min(), x.max()
+                z_min, z_max = z.min(), z.max()
+
+                xi = np.linspace(x_min, x_max, resolution)
+                zi = np.linspace(z_min, z_max, resolution)
+                Xi, Zi = np.meshgrid(xi, zi)
+
+                # Interpolate Y values
+                Yi = griddata((x, z), y, (Xi, Zi), method='linear', fill_value=np.nan)
+
+                # Store mesh data
+                self.generated_mesh = {
+                    'type': 'floor',
+                    'X': Xi,
+                    'Y': Yi,
+                    'Z': Zi,
+                    'points': averaged_points
+                }
+            else:
+                # Create general mesh using convex hull or Delaunay
+                from scipy.spatial import Delaunay
+
+                # Use all three dimensions for triangulation
+                tri = Delaunay(averaged_points[:, [0, 2]])  # XZ projection for triangulation
+
+                self.generated_mesh = {
+                    'type': 'general',
+                    'points': averaged_points,
+                    'triangles': tri.simplices
+                }
+
+            self.plot_all()
+            self.lbl_info.config(text=f"Mesh generated from {len(averaged_points)} points (original: {len(points)})")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to generate mesh: {str(e)}")
+
+    def _average_points(self, points, cell_size):
+        """Average nearby points to reduce polygon count"""
+        if len(points) == 0:
+            return points
+
+        # Create a grid-based averaging system
+        x_min, y_min, z_min = points.min(axis=0)
+
+        # Use dictionary to accumulate points in each cell
+        cells = {}
+        for p in points:
+            # Cell key based on position
+            cx = int((p[0] - x_min) / cell_size)
+            cy = int((p[1] - y_min) / cell_size)
+            cz = int((p[2] - z_min) / cell_size)
+            key = (cx, cy, cz)
+
+            if key not in cells:
+                cells[key] = []
+            cells[key].append(p)
+
+        # Average points within each cell
+        averaged = []
+        for cell_points in cells.values():
+            avg_point = np.mean(cell_points, axis=0)
+            averaged.append(avg_point)
+
+        return np.array(averaged)
+
+    def clear_mesh(self):
+        """Remove the generated mesh"""
+        self.generated_mesh = None
+        self.mesh_collection = None
+        self.plot_all()
+        self.lbl_info.config(text="Mesh cleared")
+
+    def _get_complementary_color(self, hex_color):
+        """Get complementary color for a hex color string"""
+        # Remove # if present
+        hex_color = hex_color.lstrip('#')
+        # Convert to RGB
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        # Get complementary (invert)
+        comp_r = 255 - r
+        comp_g = 255 - g
+        comp_b = 255 - b
+        # Return as matplotlib-compatible tuple (0-1 range)
+        return (comp_r / 255.0, comp_g / 255.0, comp_b / 255.0)
 
     def build_quaternion_viewer(self, parent):
         """Quaternion visualization and conversion panel"""
@@ -2621,15 +2840,18 @@ class KatamariEditor:
             x_range = np.linspace(x_min, x_max, 2)
             z_range = np.linspace(z_min, z_max, 2)
             X, Z = np.meshgrid(x_range, z_range)
-            
-            X = -X
-            
+
+            # Calculate Y from plane equation BEFORE negating X for display
+            # Plane equation: a*x + b*z + c*y + d = 0, solve for y: y = -(a*x + b*z + d) / c
             if abs(c) > 1e-6:
                 Y = -(a*X + b*Z + d) / c
             elif abs(b) > 1e-6:
                 Y = np.zeros_like(X)
             else:
                 Y = np.zeros_like(X)
+
+            # Now negate X for display coordinate system
+            X = -X
 
             is_active = (active_plane_idx and active_plane_idx[0] == idx)
             is_auto = p.get("auto", False)
@@ -2644,6 +2866,38 @@ class KatamariEditor:
                 self.ax3d.add_collection3d(poly)
             elif abs(c) > 1e-6:
                 self.ax3d.plot_surface(X, Z, Y, color=color, alpha=p_alpha, shade=False)
+
+        # Render generated mesh if exists
+        if hasattr(self, 'generated_mesh') and self.generated_mesh:
+            mesh_alpha = self.mesh_alpha.get() if hasattr(self, 'mesh_alpha') else 0.5
+            # Get complementary color from current theme for mesh visibility
+            theme = self.themes.get(self.current_theme.get(), self.themes["Light"])
+            mesh_color = self._get_complementary_color(theme["graph_bg"])
+            # Darken edge color slightly
+            edge_color = tuple(max(0, c - 0.2) for c in mesh_color)
+
+            if self.generated_mesh['type'] == 'floor':
+                X_mesh = self.generated_mesh['X']
+                Y_mesh = self.generated_mesh['Y']
+                Z_mesh = self.generated_mesh['Z']
+                # Transform to display coordinates: negate X, swap Y and Z for display
+                self.ax3d.plot_surface(-X_mesh, Z_mesh, Y_mesh, color=mesh_color, alpha=mesh_alpha,
+                                       shade=True, edgecolor=edge_color, linewidth=0.3)
+            elif self.generated_mesh['type'] == 'general':
+                points = self.generated_mesh['points']
+                triangles = self.generated_mesh['triangles']
+                # Create triangle vertices for display
+                verts = []
+                for tri in triangles:
+                    triangle = [
+                        (-points[tri[0]][0], points[tri[0]][2], points[tri[0]][1]),
+                        (-points[tri[1]][0], points[tri[1]][2], points[tri[1]][1]),
+                        (-points[tri[2]][0], points[tri[2]][2], points[tri[2]][1])
+                    ]
+                    verts.append(triangle)
+                mesh_poly = Poly3DCollection(verts, alpha=mesh_alpha, facecolors=mesh_color,
+                                            edgecolors=edge_color, linewidths=0.3)
+                self.ax3d.add_collection3d(mesh_poly)
 
         # Restore view state only if it exists and initial view has been set
         if self.view_state['3d'] and self.initial_view_set:
