@@ -251,21 +251,21 @@ class KatamariEditor:
             },
             "Solar Flare": {
                 "name": "Solar Flare",
-                "bg": "#ff6600", "fg": "#ffff00", "accent": "#ff0000",
-                "panel_bg": "#ff8800", "panel_fg": "#ffff00",
-                "frame_bg": "#ffaa00", "labelframe_bg": "#ff8800",
-                "input_bg": "#ffcc00", "input_fg": "#ffffff",
-                "button_bg": "#ff0000", "button_fg": "#ffff00",
-                "listbox_bg": "#ff4400", "listbox_fg": "#ffff00",
-                "listbox_select_bg": "#ff0000", "listbox_select_fg": "#ffff00",
-                "select_bg": "#ff0000", "select_fg": "#ffff00",
-                "border": "#ffff00", "sash": "#ff0000",
-                "info_bg": "#882200", "info_fg": "#ffff00",
-                "toolbar_bg": "#ffaa00",
-                "menu_bg": "#ff6600", "menu_fg": "#ffff00",
-                "graph_bg": "#882200", "graph_pane": "#ff6600",
-                "graph_grid": "#ffff00", "graph_text": "#ffffff", "graph_pane_alpha": 0.92,
-                "scrollbar_bg": "#ffcc00", "scrollbar_fg": "#ff0000",
+                "bg": "#ff8800", "fg": "#330000", "accent": "#ff0000",
+                "panel_bg": "#ffaa00", "panel_fg": "#330000",
+                "frame_bg": "#ffcc00", "labelframe_bg": "#ffaa00",
+                "input_bg": "#ffee99", "input_fg": "#663300",
+                "button_bg": "#ff3300", "button_fg": "#ffff00",
+                "listbox_bg": "#ffdd88", "listbox_fg": "#660000",
+                "listbox_select_bg": "#ff3300", "listbox_select_fg": "#ffff00",
+                "select_bg": "#ff3300", "select_fg": "#ffff00",
+                "border": "#ff3300", "sash": "#ff0000",
+                "info_bg": "#660000", "info_fg": "#ffff00",
+                "toolbar_bg": "#ffcc00",
+                "menu_bg": "#ff8800", "menu_fg": "#330000",
+                "graph_bg": "#ffaa66", "graph_pane": "#ff8800",
+                "graph_grid": "#ff3300", "graph_text": "#660000", "graph_pane_alpha": 0.92,
+                "scrollbar_bg": "#ffcc00", "scrollbar_fg": "#ff3300",
                 "highlight_color": "#00ffff",
             },
             "Sakura": {
@@ -1111,18 +1111,24 @@ class KatamariEditor:
         return plane_frame
 
     def build_size_filter(self, parent):
-        size_filter_frame = tk.LabelFrame(parent, text="Size Filter (mm)", bg="#ddd", padx=5, pady=5)
-        
-        tk.Checkbutton(size_filter_frame, text="Enable Size Filter", variable=self.size_filter_enabled, bg="#ddd", command=self.on_size_filter_change).pack(anchor="w")
-        
-        tk.Label(size_filter_frame, text="Min Size:", bg="#ddd").pack(anchor="w")
-        self.scale_size_min = tk.Scale(size_filter_frame, from_=0, to=10000, orient=tk.HORIZONTAL, variable=self.size_filter_min, showvalue=1, resolution=10, command=lambda v: self.on_size_filter_change())
-        self.scale_size_min.pack(fill=tk.X)
-        
-        tk.Label(size_filter_frame, text="Max Size:", bg="#ddd").pack(anchor="w")
-        self.scale_size_max = tk.Scale(size_filter_frame, from_=0, to=10000, orient=tk.HORIZONTAL, variable=self.size_filter_max, showvalue=1, resolution=10, command=lambda v: self.on_size_filter_change())
-        self.scale_size_max.pack(fill=tk.X)
-        
+        size_filter_frame = tk.LabelFrame(parent, text="Size Filter (mm)", bg="#ddd", padx=3, pady=2)
+
+        tk.Checkbutton(size_filter_frame, text="Enable", variable=self.size_filter_enabled, bg="#ddd", command=self.on_size_filter_change).pack(anchor="w")
+
+        # Min size row
+        min_row = tk.Frame(size_filter_frame, bg="#ddd")
+        min_row.pack(fill=tk.X, pady=1)
+        tk.Label(min_row, text="Min:", bg="#ddd", width=4).pack(side=tk.LEFT)
+        self.scale_size_min = tk.Scale(min_row, from_=0, to=10000, orient=tk.HORIZONTAL, variable=self.size_filter_min, showvalue=1, resolution=10, command=lambda v: self.on_size_filter_change(), length=120)
+        self.scale_size_min.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Max size row
+        max_row = tk.Frame(size_filter_frame, bg="#ddd")
+        max_row.pack(fill=tk.X, pady=1)
+        tk.Label(max_row, text="Max:", bg="#ddd", width=4).pack(side=tk.LEFT)
+        self.scale_size_max = tk.Scale(max_row, from_=0, to=10000, orient=tk.HORIZONTAL, variable=self.size_filter_max, showvalue=1, resolution=10, command=lambda v: self.on_size_filter_change(), length=120)
+        self.scale_size_max.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
         return size_filter_frame
 
     def build_sort_tools(self, parent):
@@ -1667,39 +1673,36 @@ class KatamariEditor:
         tk.Button(rotate_row, text="Z", command=lambda: self.rotate_positions("z"), bg="#9C27B0", fg="white", width=6).pack(side=tk.LEFT, padx=1)
 
         # Scatter section
-        scatter_frame = tk.LabelFrame(ops_frame, text="Scatter Positions", bg="#e8f4f8", padx=3, pady=3)
+        scatter_frame = tk.LabelFrame(ops_frame, text="Scatter Positions", bg="#e8f4f8", padx=2, pady=2)
         scatter_frame.pack(fill=tk.X, pady=2)
-
-        tk.Label(scatter_frame, text="Randomize entity positions by adjustable amounts",
-                bg="#e8f4f8", font=("Arial", 8, "italic")).pack(anchor="w", pady=(0,5))
 
         # X scatter slider
         x_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
         x_scatter_row.pack(fill=tk.X, pady=1)
-        tk.Label(x_scatter_row, text="X Range:", bg="#e8f4f8", width=10).pack(side=tk.LEFT)
+        tk.Label(x_scatter_row, text="X:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
         self.scatter_x = tk.DoubleVar(value=5.0)
         tk.Scale(x_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
-                variable=self.scatter_x, showvalue=1, bg="#e8f4f8", length=150).pack(side=tk.LEFT, fill=tk.X, expand=True)
+                variable=self.scatter_x, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Y scatter slider
         y_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
         y_scatter_row.pack(fill=tk.X, pady=1)
-        tk.Label(y_scatter_row, text="Y Range:", bg="#e8f4f8", width=10).pack(side=tk.LEFT)
+        tk.Label(y_scatter_row, text="Y:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
         self.scatter_y = tk.DoubleVar(value=5.0)
         tk.Scale(y_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
-                variable=self.scatter_y, showvalue=1, bg="#e8f4f8", length=150).pack(side=tk.LEFT, fill=tk.X, expand=True)
+                variable=self.scatter_y, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Z scatter slider
         z_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
         z_scatter_row.pack(fill=tk.X, pady=1)
-        tk.Label(z_scatter_row, text="Z Range:", bg="#e8f4f8", width=10).pack(side=tk.LEFT)
+        tk.Label(z_scatter_row, text="Z:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
         self.scatter_z = tk.DoubleVar(value=5.0)
         tk.Scale(z_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
-                variable=self.scatter_z, showvalue=1, bg="#e8f4f8", length=150).pack(side=tk.LEFT, fill=tk.X, expand=True)
+                variable=self.scatter_z, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Apply scatter button
         tk.Button(scatter_frame, text="APPLY SCATTER", command=self.scatter_positions,
-                 bg="#4CAF50", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=(5,0))
+                 bg="#4CAF50", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=(3,0))
 
         return ops_frame
 
