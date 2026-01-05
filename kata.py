@@ -20,6 +20,7 @@ class KatamariEditor:
         self.root = root
         self.root.title("Katamari Editor 19.3 - Multi-Map Support")
         self.root.geometry("1600x1000")
+        self.root.resizable(True, True)  # Ensure window is resizable
 
         # --- Undo System ---
         self.undo_stack = []
@@ -58,7 +59,7 @@ class KatamariEditor:
         self.size_filter_enabled = tk.BooleanVar(value=False)
         
         self.is_dragging = False
-        self.drag_start = None 
+        self.drag_start = None
         self.rect_patch = None
         self.active_ax = None
 
@@ -89,13 +90,228 @@ class KatamariEditor:
         self.show_slice = tk.BooleanVar(value=False)  # Hidden by default
         self.show_quat = tk.BooleanVar(value=True)
         self.show_pattern = tk.BooleanVar(value=True)
+        self.show_scatter = tk.BooleanVar(value=False)  # Hidden by default (takes up space)
         
         # Theme system
         self.current_theme = tk.StringVar(value="Light")
         self.dark_theme = tk.BooleanVar(value=False)  # Legacy compatibility
-        
-        # Comprehensive theme definitions with rich color palettes
-        self.themes = {
+        self.gaudy_mode = tk.BooleanVar(value=True)  # True = gaudy, False = minimalist
+
+        # Gaudy theme definitions with vibrant 2000s colors
+        self.themes_gaudy = {
+            "Light": {
+                "name": "Light",
+                "bg": "#e0f0ff", "fg": "#000066", "accent": "#ff0099",
+                "panel_bg": "#ccddff", "panel_fg": "#000066",
+                "frame_bg": "#b8d4ff", "labelframe_bg": "#ccddff",
+                "input_bg": "#ffffff", "input_fg": "#000066",
+                "button_bg": "#ff0099", "button_fg": "#ffffff",
+                "listbox_bg": "#ffffff", "listbox_fg": "#000066",
+                "listbox_select_bg": "#ff0099", "listbox_select_fg": "#ffff00",
+                "select_bg": "#ff0099", "select_fg": "#ffff00",
+                "border": "#0066ff", "sash": "#ff0099",
+                "info_bg": "#000066", "info_fg": "#00ff00",
+                "toolbar_bg": "#b8d4ff",
+                "menu_bg": "#ccddff", "menu_fg": "#000066",
+                "graph_bg": "#f0f8ff", "graph_pane": "#ddeeff",
+                "graph_grid": "#0066ff", "graph_text": "#000066", "graph_pane_alpha": 1.0,
+                "scrollbar_bg": "#0066ff", "scrollbar_fg": "#ff0099",
+                "highlight_color": "#ffff00",
+            },
+            "Obsidian": {
+                "name": "Obsidian",
+                "bg": "#0a0014", "fg": "#00ffff", "accent": "#ff00ff",
+                "panel_bg": "#140028", "panel_fg": "#00ffff",
+                "frame_bg": "#1e0050", "labelframe_bg": "#140028",
+                "input_bg": "#2d0066", "input_fg": "#00ffff",
+                "button_bg": "#ff00ff", "button_fg": "#ffff00",
+                "listbox_bg": "#0a0014", "listbox_fg": "#00ffff",
+                "listbox_select_bg": "#ff00ff", "listbox_select_fg": "#ffff00",
+                "select_bg": "#ff00ff", "select_fg": "#ffff00",
+                "border": "#00ffff", "sash": "#ff00ff",
+                "info_bg": "#000000", "info_fg": "#00ff00",
+                "toolbar_bg": "#1e0050",
+                "menu_bg": "#0a0014", "menu_fg": "#00ffff",
+                "graph_bg": "#000000", "graph_pane": "#0a0014",
+                "graph_grid": "#00ffff", "graph_text": "#00ffff", "graph_pane_alpha": 0.95,
+                "scrollbar_bg": "#2d0066", "scrollbar_fg": "#ff00ff",
+                "highlight_color": "#ffff00",
+            },
+            "Olive Grove": {
+                "name": "Olive Grove",
+                "bg": "#003300", "fg": "#00ff00", "accent": "#ffff00",
+                "panel_bg": "#004400", "panel_fg": "#00ff00",
+                "frame_bg": "#005500", "labelframe_bg": "#004400",
+                "input_bg": "#006600", "input_fg": "#ccff00",
+                "button_bg": "#99ff00", "button_fg": "#003300",
+                "listbox_bg": "#002200", "listbox_fg": "#00ff00",
+                "listbox_select_bg": "#99ff00", "listbox_select_fg": "#003300",
+                "select_bg": "#99ff00", "select_fg": "#003300",
+                "border": "#00ff00", "sash": "#99ff00",
+                "info_bg": "#001100", "info_fg": "#ccff00",
+                "toolbar_bg": "#005500",
+                "menu_bg": "#003300", "menu_fg": "#00ff00",
+                "graph_bg": "#001100", "graph_pane": "#003300",
+                "graph_grid": "#00ff00", "graph_text": "#99ff00", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#006600", "scrollbar_fg": "#99ff00",
+                "highlight_color": "#ff00ff",
+            },
+            "Deep Ocean": {
+                "name": "Deep Ocean",
+                "bg": "#000066", "fg": "#00ccff", "accent": "#ff6600",
+                "panel_bg": "#000099", "panel_fg": "#00ccff",
+                "frame_bg": "#0000cc", "labelframe_bg": "#000099",
+                "input_bg": "#0000ff", "input_fg": "#00ffff",
+                "button_bg": "#ff6600", "button_fg": "#ffff00",
+                "listbox_bg": "#000033", "listbox_fg": "#00ccff",
+                "listbox_select_bg": "#ff6600", "listbox_select_fg": "#ffff00",
+                "select_bg": "#ff6600", "select_fg": "#ffff00",
+                "border": "#00ccff", "sash": "#ff6600",
+                "info_bg": "#000000", "info_fg": "#00ffff",
+                "toolbar_bg": "#0000cc",
+                "menu_bg": "#000066", "menu_fg": "#00ccff",
+                "graph_bg": "#000022", "graph_pane": "#000066",
+                "graph_grid": "#00ccff", "graph_text": "#00ffff", "graph_pane_alpha": 0.94,
+                "scrollbar_bg": "#0000ff", "scrollbar_fg": "#ff6600",
+                "highlight_color": "#ffff00",
+            },
+            "Crimson Night": {
+                "name": "Crimson Night",
+                "bg": "#330011", "fg": "#ff0099", "accent": "#00ffff",
+                "panel_bg": "#550033", "panel_fg": "#ff0099",
+                "frame_bg": "#770055", "labelframe_bg": "#550033",
+                "input_bg": "#990077", "input_fg": "#ff66cc",
+                "button_bg": "#00ffff", "button_fg": "#330011",
+                "listbox_bg": "#220011", "listbox_fg": "#ff0099",
+                "listbox_select_bg": "#00ffff", "listbox_select_fg": "#330011",
+                "select_bg": "#00ffff", "select_fg": "#330011",
+                "border": "#ff0099", "sash": "#00ffff",
+                "info_bg": "#110000", "info_fg": "#ff00ff",
+                "toolbar_bg": "#770055",
+                "menu_bg": "#330011", "menu_fg": "#ff0099",
+                "graph_bg": "#110000", "graph_pane": "#330011",
+                "graph_grid": "#ff0099", "graph_text": "#ff66cc", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#990077", "scrollbar_fg": "#00ffff",
+                "highlight_color": "#ffff00",
+            },
+            "Burnished Oak": {
+                "name": "Burnished Oak",
+                "bg": "#663300", "fg": "#ffcc00", "accent": "#ff6600",
+                "panel_bg": "#884400", "panel_fg": "#ffcc00",
+                "frame_bg": "#aa5500", "labelframe_bg": "#884400",
+                "input_bg": "#cc6600", "input_fg": "#ffee00",
+                "button_bg": "#ff6600", "button_fg": "#000000",
+                "listbox_bg": "#442200", "listbox_fg": "#ffcc00",
+                "listbox_select_bg": "#ff6600", "listbox_select_fg": "#000000",
+                "select_bg": "#ff6600", "select_fg": "#000000",
+                "border": "#ffcc00", "sash": "#ff6600",
+                "info_bg": "#221100", "info_fg": "#ffee00",
+                "toolbar_bg": "#aa5500",
+                "menu_bg": "#663300", "menu_fg": "#ffcc00",
+                "graph_bg": "#221100", "graph_pane": "#663300",
+                "graph_grid": "#ffcc00", "graph_text": "#ffee00", "graph_pane_alpha": 0.92,
+                "scrollbar_bg": "#cc6600", "scrollbar_fg": "#ff6600",
+                "highlight_color": "#00ff00",
+            },
+            "Amethyst": {
+                "name": "Amethyst",
+                "bg": "#330066", "fg": "#ff00ff", "accent": "#ffff00",
+                "panel_bg": "#550099", "panel_fg": "#ff00ff",
+                "frame_bg": "#7700cc", "labelframe_bg": "#550099",
+                "input_bg": "#9900ff", "input_fg": "#ff99ff",
+                "button_bg": "#ffff00", "button_fg": "#330066",
+                "listbox_bg": "#220044", "listbox_fg": "#ff00ff",
+                "listbox_select_bg": "#ffff00", "listbox_select_fg": "#330066",
+                "select_bg": "#ffff00", "select_fg": "#330066",
+                "border": "#ff00ff", "sash": "#ffff00",
+                "info_bg": "#110022", "info_fg": "#ff00ff",
+                "toolbar_bg": "#7700cc",
+                "menu_bg": "#330066", "menu_fg": "#ff00ff",
+                "graph_bg": "#110022", "graph_pane": "#330066",
+                "graph_grid": "#ff00ff", "graph_text": "#ff99ff", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#9900ff", "scrollbar_fg": "#ffff00",
+                "highlight_color": "#00ff00",
+            },
+            "Void": {
+                "name": "Void",
+                "bg": "#000000", "fg": "#00ff00", "accent": "#ff00ff",
+                "panel_bg": "#001100", "panel_fg": "#00ff00",
+                "frame_bg": "#002200", "labelframe_bg": "#001100",
+                "input_bg": "#003300", "input_fg": "#00ff00",
+                "button_bg": "#ff00ff", "button_fg": "#ffff00",
+                "listbox_bg": "#000000", "listbox_fg": "#00ff00",
+                "listbox_select_bg": "#ff00ff", "listbox_select_fg": "#ffff00",
+                "select_bg": "#ff00ff", "select_fg": "#ffff00",
+                "border": "#00ff00", "sash": "#ff00ff",
+                "info_bg": "#000000", "info_fg": "#00ff00",
+                "toolbar_bg": "#002200",
+                "menu_bg": "#000000", "menu_fg": "#00ff00",
+                "graph_bg": "#000000", "graph_pane": "#001100",
+                "graph_grid": "#00ff00", "graph_text": "#00ff00", "graph_pane_alpha": 0.98,
+                "scrollbar_bg": "#003300", "scrollbar_fg": "#ff00ff",
+                "highlight_color": "#ffff00",
+            },
+            "Solar Flare": {
+                "name": "Solar Flare",
+                "bg": "#ff8800", "fg": "#330000", "accent": "#ff0000",
+                "panel_bg": "#ffaa00", "panel_fg": "#330000",
+                "frame_bg": "#ffcc00", "labelframe_bg": "#ffaa00",
+                "input_bg": "#ffee99", "input_fg": "#663300",
+                "button_bg": "#ff3300", "button_fg": "#ffff00",
+                "listbox_bg": "#ffdd88", "listbox_fg": "#660000",
+                "listbox_select_bg": "#ff3300", "listbox_select_fg": "#ffff00",
+                "select_bg": "#ff3300", "select_fg": "#ffff00",
+                "border": "#ff3300", "sash": "#ff0000",
+                "info_bg": "#660000", "info_fg": "#ffff00",
+                "toolbar_bg": "#ffcc00",
+                "menu_bg": "#ff8800", "menu_fg": "#330000",
+                "graph_bg": "#ffaa66", "graph_pane": "#ff8800",
+                "graph_grid": "#ff3300", "graph_text": "#660000", "graph_pane_alpha": 0.92,
+                "scrollbar_bg": "#ffcc00", "scrollbar_fg": "#ff3300",
+                "highlight_color": "#00ffff",
+            },
+            "Sakura": {
+                "name": "Sakura",
+                "bg": "#ff99cc", "fg": "#660033", "accent": "#ff00ff",
+                "panel_bg": "#ffaadd", "panel_fg": "#660033",
+                "frame_bg": "#ffbbee", "labelframe_bg": "#ffaadd",
+                "input_bg": "#ffccff", "input_fg": "#660033",
+                "button_bg": "#ff00ff", "button_fg": "#ffff00",
+                "listbox_bg": "#ff88bb", "listbox_fg": "#660033",
+                "listbox_select_bg": "#ff00ff", "listbox_select_fg": "#ffff00",
+                "select_bg": "#ff00ff", "select_fg": "#ffff00",
+                "border": "#ff00ff", "sash": "#ff0066",
+                "info_bg": "#990066", "info_fg": "#ffccff",
+                "toolbar_bg": "#ffbbee",
+                "menu_bg": "#ff99cc", "menu_fg": "#660033",
+                "graph_bg": "#ff88bb", "graph_pane": "#ff99cc",
+                "graph_grid": "#ff00ff", "graph_text": "#660033", "graph_pane_alpha": 0.93,
+                "scrollbar_bg": "#ffccff", "scrollbar_fg": "#ff0066",
+                "highlight_color": "#00ff00",
+            },
+            "Northern Lights": {
+                "name": "Northern Lights",
+                "bg": "#003366", "fg": "#00ffff", "accent": "#00ff99",
+                "panel_bg": "#004488", "panel_fg": "#00ffff",
+                "frame_bg": "#0055aa", "labelframe_bg": "#004488",
+                "input_bg": "#0066cc", "input_fg": "#ccffff",
+                "button_bg": "#00ff99", "button_fg": "#003366",
+                "listbox_bg": "#002244", "listbox_fg": "#00ffff",
+                "listbox_select_bg": "#00ff99", "listbox_select_fg": "#003366",
+                "select_bg": "#00ff99", "select_fg": "#003366",
+                "border": "#00ffff", "sash": "#00ff99",
+                "info_bg": "#001133", "info_fg": "#00ffff",
+                "toolbar_bg": "#0055aa",
+                "menu_bg": "#003366", "menu_fg": "#00ffff",
+                "graph_bg": "#001133", "graph_pane": "#003366",
+                "graph_grid": "#00ffff", "graph_text": "#ccffff", "graph_pane_alpha": 0.94,
+                "scrollbar_bg": "#0066cc", "scrollbar_fg": "#00ff99",
+                "highlight_color": "#ff00ff",
+            },
+        }
+
+        # Minimalist theme definitions with subdued, professional colors
+        self.themes_minimalist = {
             "Light": {
                 "name": "Light",
                 "bg": "#f5f5f5", "fg": "#1a1a1a", "accent": "#0066cc",
@@ -306,7 +522,10 @@ class KatamariEditor:
                 "highlight_color": "#ff80a0",
             },
         }
-        
+
+        # Active themes dictionary (points to gaudy or minimalist)
+        self.themes = self.themes_gaudy
+
         # Load saved preferences
         self.load_preferences()
         
@@ -323,7 +542,7 @@ class KatamariEditor:
 
         self.create_menu()
         
-        self.main_pane = tk.PanedWindow(root, orient=tk.HORIZONTAL, sashwidth=6, bg="#777")
+        self.main_pane = tk.PanedWindow(root, orient=tk.HORIZONTAL, sashwidth=8, sashrelief=tk.RAISED, bg="#777")
         self.main_pane.pack(fill=tk.BOTH, expand=True)
 
         self.col_left = tk.Frame(self.main_pane, bg="#ddd")
@@ -383,7 +602,18 @@ class KatamariEditor:
         self.figure = Figure(figsize=(10, 4), dpi=100)
         self.ax3d = self.figure.add_subplot(111, projection='3d')
         self.ax3d.set_visible(True)
-        
+
+        # Custom coordinate formatter for correct world coordinates display
+        def format_coord_3d(x, y):
+            # Convert display coordinates back to world coordinates
+            # Display X = -World X, so World X = -Display X
+            # Display Y = World Z, so World Z = Display Y
+            # We can't easily determine World Y from 2D coordinates in a 3D view
+            world_x = -x
+            world_z = y
+            return f'World X={world_x:.2f}, Z={world_z:.2f}'
+        self.ax3d.format_coord = format_coord_3d
+
         self.canvas = FigureCanvasTkAgg(self.figure, self.graph_container)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.toolbar = NavigationToolbar2Tk(self.canvas, self.graph_container)
@@ -431,7 +661,8 @@ class KatamariEditor:
                     if 'show_slice' in prefs: self.show_slice.set(prefs['show_slice'] == 'True')
                     if 'show_quat' in prefs: self.show_quat.set(prefs['show_quat'] == 'True')
                     if 'show_pattern' in prefs: self.show_pattern.set(prefs['show_pattern'] == 'True')
-                    
+                    if 'show_scatter' in prefs: self.show_scatter.set(prefs['show_scatter'] == 'True')
+
                     # Load panel positions
                     if 'batch_side' in prefs: self.batch_side.set(prefs['batch_side'])
                     if 'pos_ops_side' in prefs: self.pos_ops_side.set(prefs['pos_ops_side'])
@@ -443,6 +674,14 @@ class KatamariEditor:
                     if 'pattern_side' in prefs: self.pattern_side.set(prefs['pattern_side'])
                     
                     # Load theme preference
+                    if 'gaudy_mode' in prefs:
+                        self.gaudy_mode.set(prefs['gaudy_mode'] == 'True')
+                        # Switch themes dictionary based on mode
+                        if self.gaudy_mode.get():
+                            self.themes = self.themes_gaudy
+                        else:
+                            self.themes = self.themes_minimalist
+
                     if 'current_theme' in prefs and prefs['current_theme'] in self.themes:
                         self.current_theme.set(prefs['current_theme'])
                         self.dark_theme.set(prefs['current_theme'] != 'Light')
@@ -468,6 +707,7 @@ class KatamariEditor:
                 f.write(f"show_slice={self.show_slice.get()}\n")
                 f.write(f"show_quat={self.show_quat.get()}\n")
                 f.write(f"show_pattern={self.show_pattern.get()}\n")
+                f.write(f"show_scatter={self.show_scatter.get()}\n")
                 
                 # Save panel positions
                 f.write(f"batch_side={self.batch_side.get()}\n")
@@ -481,8 +721,152 @@ class KatamariEditor:
                 
                 # Save theme
                 f.write(f"current_theme={self.current_theme.get()}\n")
+                f.write(f"gaudy_mode={self.gaudy_mode.get()}\n")
         except Exception as e:
             print(f"Error saving preferences: {e}")
+
+    def save_layout(self):
+        """Save current pane layout to a named file"""
+        import tkinter.simpledialog as simpledialog
+        import os
+
+        # Ask for layout name
+        layout_name = simpledialog.askstring("Save Layout", "Enter a name for this layout:")
+        if not layout_name:
+            return
+
+        # Create layouts directory if it doesn't exist
+        layouts_dir = os.path.join(os.path.dirname(__file__), 'layouts')
+        if not os.path.exists(layouts_dir):
+            os.makedirs(layouts_dir)
+
+        # Save layout to file
+        layout_file = os.path.join(layouts_dir, f"{layout_name}.layout")
+        try:
+            with open(layout_file, 'w') as f:
+                # Save panel visibility
+                f.write(f"show_batch={self.show_batch.get()}\n")
+                f.write(f"show_pos_ops={self.show_pos_ops.get()}\n")
+                f.write(f"show_plane={self.show_plane.get()}\n")
+                f.write(f"show_size_filter={self.show_size_filter.get()}\n")
+                f.write(f"show_sort={self.show_sort.get()}\n")
+                f.write(f"show_slice={self.show_slice.get()}\n")
+                f.write(f"show_quat={self.show_quat.get()}\n")
+                f.write(f"show_pattern={self.show_pattern.get()}\n")
+                f.write(f"show_scatter={self.show_scatter.get()}\n")
+
+                # Save panel positions
+                f.write(f"batch_side={self.batch_side.get()}\n")
+                f.write(f"pos_ops_side={self.pos_ops_side.get()}\n")
+                f.write(f"plane_side={self.plane_side.get()}\n")
+                f.write(f"size_filter_side={self.size_filter_side.get()}\n")
+                f.write(f"sort_side={self.sort_side.get()}\n")
+                f.write(f"slice_side={self.slice_side.get()}\n")
+                f.write(f"quat_side={self.quat_side.get()}\n")
+                f.write(f"pattern_side={self.pattern_side.get()}\n")
+
+            messagebox.showinfo("Success", f"Layout '{layout_name}' saved successfully!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save layout: {e}")
+
+    def load_layout(self):
+        """Load a saved pane layout"""
+        import os
+
+        # Get list of saved layouts
+        layouts_dir = os.path.join(os.path.dirname(__file__), 'layouts')
+        if not os.path.exists(layouts_dir):
+            messagebox.showinfo("No Layouts", "No saved layouts found.")
+            return
+
+        layout_files = [f[:-7] for f in os.listdir(layouts_dir) if f.endswith('.layout')]
+        if not layout_files:
+            messagebox.showinfo("No Layouts", "No saved layouts found.")
+            return
+
+        # Show dialog to select layout
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Load Layout")
+        dialog.geometry("300x400")
+        dialog.resizable(True, True)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        tk.Label(dialog, text="Select a layout to load:", pady=10).pack()
+
+        listbox = tk.Listbox(dialog, font=("Arial", 10))
+        listbox.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        for layout_name in sorted(layout_files):
+            listbox.insert(tk.END, layout_name)
+
+        def load_selected():
+            selection = listbox.curselection()
+            if not selection:
+                messagebox.showwarning("No Selection", "Please select a layout to load.")
+                return
+
+            layout_name = listbox.get(selection[0])
+            layout_file = os.path.join(layouts_dir, f"{layout_name}.layout")
+
+            try:
+                with open(layout_file, 'r') as f:
+                    prefs = {}
+                    for line in f:
+                        if '=' in line:
+                            key, value = line.strip().split('=', 1)
+                            prefs[key] = value
+
+                    # Load panel visibility
+                    if 'show_batch' in prefs: self.show_batch.set(prefs['show_batch'] == 'True')
+                    if 'show_pos_ops' in prefs: self.show_pos_ops.set(prefs['show_pos_ops'] == 'True')
+                    if 'show_plane' in prefs: self.show_plane.set(prefs['show_plane'] == 'True')
+                    if 'show_size_filter' in prefs: self.show_size_filter.set(prefs['show_size_filter'] == 'True')
+                    if 'show_sort' in prefs: self.show_sort.set(prefs['show_sort'] == 'True')
+                    if 'show_slice' in prefs: self.show_slice.set(prefs['show_slice'] == 'True')
+                    if 'show_quat' in prefs: self.show_quat.set(prefs['show_quat'] == 'True')
+                    if 'show_pattern' in prefs: self.show_pattern.set(prefs['show_pattern'] == 'True')
+
+                    # Load panel positions
+                    if 'batch_side' in prefs: self.batch_side.set(prefs['batch_side'])
+                    if 'pos_ops_side' in prefs: self.pos_ops_side.set(prefs['pos_ops_side'])
+                    if 'plane_side' in prefs: self.plane_side.set(prefs['plane_side'])
+                    if 'size_filter_side' in prefs: self.size_filter_side.set(prefs['size_filter_side'])
+                    if 'sort_side' in prefs: self.sort_side.set(prefs['sort_side'])
+                    if 'slice_side' in prefs: self.slice_side.set(prefs['slice_side'])
+                    if 'quat_side' in prefs: self.quat_side.set(prefs['quat_side'])
+                    if 'pattern_side' in prefs: self.pattern_side.set(prefs['pattern_side'])
+
+                    # Refresh UI to apply changes
+                    self.refresh_ui_layout()
+
+                dialog.destroy()
+                messagebox.showinfo("Success", f"Layout '{layout_name}' loaded successfully!")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load layout: {e}")
+
+        def delete_selected():
+            selection = listbox.curselection()
+            if not selection:
+                messagebox.showwarning("No Selection", "Please select a layout to delete.")
+                return
+
+            layout_name = listbox.get(selection[0])
+            if messagebox.askyesno("Confirm Delete", f"Delete layout '{layout_name}'?"):
+                layout_file = os.path.join(layouts_dir, f"{layout_name}.layout")
+                try:
+                    os.remove(layout_file)
+                    listbox.delete(selection[0])
+                    messagebox.showinfo("Deleted", f"Layout '{layout_name}' deleted.")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to delete layout: {e}")
+
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        tk.Button(button_frame, text="Load", command=load_selected, bg="#4CAF50", fg="white").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        tk.Button(button_frame, text="Delete", command=delete_selected, bg="#F44336", fg="white").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        tk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
 
     def on_closing(self):
         """Handle window closing"""
@@ -511,7 +895,19 @@ class KatamariEditor:
         self._apply_menu_theme(theme)
         
         self.canvas.draw()
-    
+
+    def toggle_theme_style(self):
+        """Toggle between gaudy and minimalist theme styles"""
+        self.gaudy_mode.set(not self.gaudy_mode.get())
+        # Switch active themes dictionary
+        if self.gaudy_mode.get():
+            self.themes = self.themes_gaudy
+        else:
+            self.themes = self.themes_minimalist
+        # Reapply current theme with new style
+        self.apply_theme()
+        self.refresh_ui_layout()
+
     def _apply_graph_theme(self, theme):
         """Apply theme to 3D matplotlib graph"""
         self.figure.patch.set_facecolor(theme["graph_bg"])
@@ -805,6 +1201,7 @@ class KatamariEditor:
         
         visibility_menu.add_checkbutton(label="Batch Editor", variable=self.show_batch, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Position Operations", variable=self.show_pos_ops, command=self.refresh_ui_layout)
+        visibility_menu.add_checkbutton(label="  └─ Scatter Positions", variable=self.show_scatter, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Quaternion Viewer", variable=self.show_quat, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Plane Manager", variable=self.show_plane, command=self.refresh_ui_layout)
         visibility_menu.add_checkbutton(label="Size Filter", variable=self.show_size_filter, command=self.refresh_ui_layout)
@@ -813,11 +1210,17 @@ class KatamariEditor:
         visibility_menu.add_checkbutton(label="Pattern Placer", variable=self.show_pattern, command=self.refresh_ui_layout)
         
         view_menu.add_separator()
-        
+
+        # Layout save/load
+        view_menu.add_command(label="Save Layout As...", command=self.save_layout)
+        view_menu.add_command(label="Load Layout...", command=self.load_layout)
+
+        view_menu.add_separator()
+
         # Add Auto-Zoom button
         view_menu.add_command(label="Auto-Zoom to Fit All", command=self.auto_zoom_to_fit, accelerator="Ctrl+0")
         self.root.bind('<Control-Key-0>', lambda e: self.auto_zoom_to_fit())
-        
+
         view_menu.add_separator()
         
         tools = [
@@ -865,6 +1268,14 @@ class KatamariEditor:
                 command=lambda t=theme_name: self.apply_theme(t)
             )
 
+        # Theme style toggle
+        themes_menu.add_separator()
+        themes_menu.add_checkbutton(
+            label="🎨 Gaudy Mode (2000s Web Aesthetic)",
+            variable=self.gaudy_mode,
+            command=self.toggle_theme_style
+        )
+
     def refresh_ui_layout(self):
         for frame in self.tool_frames.values():
             if frame:
@@ -896,6 +1307,9 @@ class KatamariEditor:
                 self.tool_frames[key] = builder_func(parent)
                 side_pack = get_pack_side(side_var.get())
                 self.tool_frames[key].pack(fill=tk.X, padx=10, pady=5 if key == "batch" else 2, side=side_pack)
+
+        # Reapply theme to newly created UI elements
+        self.root.after(10, lambda: self.apply_theme())
 
     def build_plane_manager(self, parent):
         plane_frame = tk.LabelFrame(parent, text="Plane Manager", bg="#ddd", padx=5, pady=5)
@@ -948,18 +1362,24 @@ class KatamariEditor:
         return plane_frame
 
     def build_size_filter(self, parent):
-        size_filter_frame = tk.LabelFrame(parent, text="Size Filter (mm)", bg="#ddd", padx=5, pady=5)
-        
-        tk.Checkbutton(size_filter_frame, text="Enable Size Filter", variable=self.size_filter_enabled, bg="#ddd", command=self.on_size_filter_change).pack(anchor="w")
-        
-        tk.Label(size_filter_frame, text="Min Size:", bg="#ddd").pack(anchor="w")
-        self.scale_size_min = tk.Scale(size_filter_frame, from_=0, to=10000, orient=tk.HORIZONTAL, variable=self.size_filter_min, showvalue=1, resolution=10, command=lambda v: self.on_size_filter_change())
-        self.scale_size_min.pack(fill=tk.X)
-        
-        tk.Label(size_filter_frame, text="Max Size:", bg="#ddd").pack(anchor="w")
-        self.scale_size_max = tk.Scale(size_filter_frame, from_=0, to=10000, orient=tk.HORIZONTAL, variable=self.size_filter_max, showvalue=1, resolution=10, command=lambda v: self.on_size_filter_change())
-        self.scale_size_max.pack(fill=tk.X)
-        
+        size_filter_frame = tk.LabelFrame(parent, text="Size Filter (mm)", bg="#ddd", padx=3, pady=2)
+
+        tk.Checkbutton(size_filter_frame, text="Enable", variable=self.size_filter_enabled, bg="#ddd", command=self.on_size_filter_change).pack(anchor="w")
+
+        # Min size row
+        min_row = tk.Frame(size_filter_frame, bg="#ddd")
+        min_row.pack(fill=tk.X, pady=1)
+        tk.Label(min_row, text="Min:", bg="#ddd", width=4).pack(side=tk.LEFT)
+        self.scale_size_min = tk.Scale(min_row, from_=0, to=10000, orient=tk.HORIZONTAL, variable=self.size_filter_min, showvalue=1, resolution=10, command=lambda v: self.on_size_filter_change(), length=120)
+        self.scale_size_min.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Max size row
+        max_row = tk.Frame(size_filter_frame, bg="#ddd")
+        max_row.pack(fill=tk.X, pady=1)
+        tk.Label(max_row, text="Max:", bg="#ddd", width=4).pack(side=tk.LEFT)
+        self.scale_size_max = tk.Scale(max_row, from_=0, to=10000, orient=tk.HORIZONTAL, variable=self.size_filter_max, showvalue=1, resolution=10, command=lambda v: self.on_size_filter_change(), length=120)
+        self.scale_size_max.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
         return size_filter_frame
 
     def build_sort_tools(self, parent):
@@ -973,7 +1393,8 @@ class KatamariEditor:
         tk.Button(sort_frame, text="Size", command=lambda: self.sort_entities("SIZE")).grid(row=1, column=1, sticky="ew")
         tk.Button(sort_frame, text="Atk", command=lambda: self.sort_entities("ATK")).grid(row=2, column=0, sticky="ew")
         tk.Button(sort_frame, text="Mov", command=lambda: self.sort_entities("MOV")).grid(row=2, column=1, sticky="ew")
-        tk.Button(sort_frame, text="RESET", command=self.reset_sort).grid(row=3, column=0, columnspan=2, sticky="ew")
+        tk.Button(sort_frame, text="ID #", command=lambda: self.sort_entities("ID")).grid(row=3, column=0, sticky="ew")
+        tk.Button(sort_frame, text="RESET", command=self.reset_sort).grid(row=3, column=1, sticky="ew")
         sort_frame.columnconfigure(0, weight=1)
         sort_frame.columnconfigure(1, weight=1)
         return sort_frame
@@ -1146,6 +1567,10 @@ class KatamariEditor:
 
     def update_quaternion_display(self):
         """Update quaternion visualization"""
+        # Check if quaternion viewer has been built
+        if not hasattr(self, 'quat_label'):
+            return
+
         if not self.selected_indices:
             self.quat_label.config(text="X: 0.000  Y: 0.000  Z: 0.000  W: 1.000")
             self.is_updating_ui = True
@@ -1154,23 +1579,27 @@ class KatamariEditor:
             self.is_updating_ui = False
             self.draw_quaternion_viz(0, 0, 0, 1)
             return
-        
+
         ent = self.entities[self.selected_indices[-1]]
         x, y, z, w = ent['rx'], ent['ry'], ent['rz'], ent['rw']
-        
+
         self.quat_label.config(text=f"X: {x:.3f}  Y: {y:.3f}  Z: {z:.3f}  W: {w:.3f}")
-        
+
         roll, pitch, yaw = self.quaternion_to_euler(x, y, z, w)
-        
+
         self.is_updating_ui = True
         for i, val in enumerate([roll, pitch, yaw]):
             self.euler_vars[i].set(val)
         self.is_updating_ui = False
-        
+
         self.draw_quaternion_viz(x, y, z, w)
 
     def draw_quaternion_viz(self, x, y, z, w):
         """Draw 3D visualization of quaternion rotation"""
+        # Check if quaternion viewer has been built
+        if not hasattr(self, 'quat_ax'):
+            return
+
         self.quat_ax.clear()
         
         rot_matrix = self.quaternion_to_rotation_matrix(x, y, z, w)
@@ -1501,7 +1930,40 @@ class KatamariEditor:
         tk.Button(rotate_row, text="X", command=lambda: self.rotate_positions("x"), bg="#9C27B0", fg="white", width=6).pack(side=tk.LEFT, padx=1)
         tk.Button(rotate_row, text="Y", command=lambda: self.rotate_positions("y"), bg="#9C27B0", fg="white", width=6).pack(side=tk.LEFT, padx=1)
         tk.Button(rotate_row, text="Z", command=lambda: self.rotate_positions("z"), bg="#9C27B0", fg="white", width=6).pack(side=tk.LEFT, padx=1)
-        
+
+        # Scatter section (conditionally shown)
+        if self.show_scatter.get():
+            scatter_frame = tk.LabelFrame(ops_frame, text="Scatter Positions", bg="#e8f4f8", padx=2, pady=2)
+            scatter_frame.pack(fill=tk.X, pady=2)
+
+            # X scatter slider
+            x_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
+            x_scatter_row.pack(fill=tk.X, pady=1)
+            tk.Label(x_scatter_row, text="X:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
+            self.scatter_x = tk.DoubleVar(value=5.0)
+            tk.Scale(x_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
+                    variable=self.scatter_x, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+            # Y scatter slider
+            y_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
+            y_scatter_row.pack(fill=tk.X, pady=1)
+            tk.Label(y_scatter_row, text="Y:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
+            self.scatter_y = tk.DoubleVar(value=5.0)
+            tk.Scale(y_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
+                    variable=self.scatter_y, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+            # Z scatter slider
+            z_scatter_row = tk.Frame(scatter_frame, bg="#e8f4f8")
+            z_scatter_row.pack(fill=tk.X, pady=1)
+            tk.Label(z_scatter_row, text="Z:", bg="#e8f4f8", width=3).pack(side=tk.LEFT)
+            self.scatter_z = tk.DoubleVar(value=5.0)
+            tk.Scale(z_scatter_row, from_=0, to=50, resolution=0.5, orient=tk.HORIZONTAL,
+                    variable=self.scatter_z, showvalue=1, bg="#e8f4f8", length=120).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+            # Apply scatter button
+            tk.Button(scatter_frame, text="APPLY SCATTER", command=self.scatter_positions,
+                     bg="#4CAF50", fg="white", font=("Arial", 9, "bold")).pack(fill=tk.X, pady=(3,0))
+
         return ops_frame
 
     def build_batch_editor(self, parent):
@@ -1661,6 +2123,40 @@ class KatamariEditor:
         self.plot_all()
         self.highlight_pts()
         messagebox.showinfo("Success", f"Rotated {len(self.selected_indices)} entities {angle_deg}° around {axis.upper()}-axis.")
+
+    def scatter_positions(self):
+        """Randomly scatter selected entities within specified ranges"""
+        if not self.selected_indices:
+            messagebox.showwarning("Selection", "Select entities to scatter.")
+            return
+
+        import random
+
+        # Get scatter ranges from sliders
+        x_range = self.scatter_x.get()
+        y_range = self.scatter_y.get()
+        z_range = self.scatter_z.get()
+
+        self.save_undo_state(f"Scatter Positions (X:±{x_range}, Y:±{y_range}, Z:±{z_range})")
+
+        # Apply random offsets to each selected entity
+        for idx in self.selected_indices:
+            # Generate random offsets within the specified ranges
+            # Using uniform distribution from -range to +range
+            if x_range > 0:
+                self.entities[idx]['x'] += random.uniform(-x_range, x_range)
+            if y_range > 0:
+                self.entities[idx]['y'] += random.uniform(-y_range, y_range)
+            if z_range > 0:
+                self.entities[idx]['z'] += random.uniform(-z_range, z_range)
+
+            # Sync the raw data
+            self._sync_entity_raw(self.entities[idx])
+
+        self.update_editor_fields()
+        self.plot_all()
+        self.highlight_pts()
+        messagebox.showinfo("Success", f"Scattered {len(self.selected_indices)} entities with ranges X:±{x_range}, Y:±{y_range}, Z:±{z_range}.")
 
     def create_plane_from_selection(self):
         """Create a plane from 3+ selected entities using best-fit"""
@@ -2192,26 +2688,26 @@ class KatamariEditor:
             xs.append(px); ys.append(py); zs.append(pz)
             
         if self.ax3d.get_visible() and xs:
-            # Layer 1: Yellow outer ring (outline around entity)
+            # Layer 1: Outer ring (outline around entity)
             self.highlights[0] = self.ax3d.scatter(
-                [-x for x in xs], zs, ys, 
+                [-x for x in xs], zs, ys,
                 c='none',
                 s=250,
                 marker='o',
-                edgecolors='#FFD700',  # Gold/yellow
-                linewidths=3, 
+                edgecolors='#FFD700',  # Gold
+                linewidths=3,
                 depthshade=False,
                 alpha=0.9
             )
-            
-            # Layer 2: Red circle (slightly smaller, inside the yellow)
+
+            # Layer 2: Inner circle (slightly smaller)
             self.highlights[1] = self.ax3d.scatter(
-                [-x for x in xs], zs, ys, 
+                [-x for x in xs], zs, ys,
                 c='none',
                 s=150,
                 marker='o',
-                edgecolors='#CC0000',  # Darker red, less harsh
-                linewidths=2.5, 
+                edgecolors='#CC0000',  # Red
+                linewidths=2.5,
                 depthshade=False,
                 alpha=0.9
             )
@@ -2442,20 +2938,23 @@ class KatamariEditor:
     def on_mouse_down(self, event):
         if not event.inaxes or self.toolbar.mode != "": return
         mode = self.select_mode.get()
-        
+
         # Alt+Click to add waypoint at mouse position
         if event.key == 'alt' and event.button == 1 and event.inaxes == self.ax3d:
             self.add_waypoint_from_click(event)
             return
-        
+
         if mode == "CLICK" or mode == "NONE": return
         if event.button != 1: return
         self.is_dragging = True; self.drag_start = (event.xdata, event.ydata); self.active_ax = event.inaxes
-        if mode == "PAINT": self.do_paint_select(event)
-    
+
+        if mode == "PAINT":
+            self.do_paint_select(event)
+
     def on_mouse_move(self, event):
         if not self.is_dragging or not event.inaxes or event.inaxes != self.active_ax: return
-        if self.select_mode.get() == "PAINT": self.do_paint_select(event)
+        if self.select_mode.get() == "PAINT":
+            self.do_paint_select(event)
 
     def on_mouse_up(self, event):
         self.is_dragging = False
@@ -2509,6 +3008,7 @@ class KatamariEditor:
             if crit == "SIZE": return info.get('size_val', 0)
             if crit == "ATK": return int(e.get('atk', 0))
             if crit == "MOV": return int(e.get('mov', 0))
+            if crit == "ID": return int(e['id'])  # Sort by entity ID number
             return e['id']
         self.display_mapping.sort(key=sk, reverse=self.sort_reverse)
         self.refresh_list()
@@ -2533,10 +3033,104 @@ class KatamariEditor:
             
             self.refresh_list()
 
+    def show_level_select_dialog(self, filepath):
+        """Show level selection dialog for large multi-level files"""
+        # Level names from d04Injector
+        LEVEL_NAMES = [
+            "UNUSED",  # Index 0
+            "TUTORIAL", "BIG-1_A", "BIG-2_A", "BIG-2_B", "BIG-2_C", "BIG-3_A", "BIG-3_B", "BIG-3_C",
+            "BIG-4_A", "BIG-4_B", "BIG-4_C", "BIG-4_D", "BIG-4_TIME", "BIG-5_A", "BIG-5_B", "BIG-5_C",
+            "BIG-5_D", "BIG-5_TIME", "BIG-6_A", "BIG-6_B", "BIG-6_C", "BIG-6_D", "BIG-6_TIME",
+            "BIG-7_A", "BIG-7_B", "BIG-8_A", "BIG-8_B", "BIG-8_C", "BIG-8_D", "BIG-8_E",
+            "BIG-9_A", "BIG-9_B", "BIG-9_C", "BIG-9_D", "BIG-9_E", "BIG-9_F", "BIG-9_G", "BIG-9_H",
+            "FOOD_A", "HOT_A", "HOT_B", "CAR_A", "CAR_B", "CAR_TIME",
+            "SHOPPING_A", "DRESS_A", "SEIZA_A", "SEIZA_C", "SEIZA_TIME",
+            "JUSTSIZE-1_A", "JUSTSIZE-2_A", "JUSTSIZE-3_A",
+            "OUSAMA_A", "OUSAMA_B", "OUSAMA_C", "OUSAMA_D", "OUSAMA_E", "OUSAMA_F", "OUSAMA_G",
+            "OUSAMA_H", "OUSAMA_I", "OUSAMA_J",
+            "BIG-10_A", "BIG-10_B", "BIG-11_A", "BIG-11_B", "BIG-11_C",
+            "JOIN-A-1_A", "JOIN-A-1_B", "JOIN-A-1_C", "JOIN-A-1_TIME",
+            "JOIN-A-2_A", "JOIN-A-2_B", "JOIN-A-2_C", "JOIN-A-2_D", "JOIN-A-2_TIME",
+            "JOIN-A-3_A", "JOIN-A-3_B", "JOIN-A-3_C", "JOIN-A-3_D", "JOIN-A-3_E",
+            # VS and Online modes (indices 82-86)
+            "VS-1_A", "VS-2_A", "VS-3_A", "ONLINE-A-4_A", "ONLINE-A-5_A",
+            # Reserved slots (indices 87-147)
+            *[f"EXTRA_{i}" for i in range(87, 148)],
+            # Index 148
+            "SELECTMAP_A"
+        ]
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Select Level to Load")
+        dialog.geometry("400x500")
+        dialog.resizable(True, True)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        tk.Label(dialog, text="This file contains multiple levels.\nSelect which level to load:",
+                pady=10, font=("Arial", 10, "bold")).pack()
+
+        # Create a frame with scrollbar
+        frame = tk.Frame(dialog)
+        frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=("Courier", 9))
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+
+        # Populate with level names (skip UNUSED at index 0)
+        for i, level_name in enumerate(LEVEL_NAMES[1:], start=1):
+            if not level_name.startswith("EXTRA_"):  # Skip placeholder entries
+                listbox.insert(tk.END, f"{i:3d}: {level_name}")
+
+        result = [None]
+
+        def load_selected():
+            selection = listbox.curselection()
+            if not selection:
+                messagebox.showwarning("No Selection", "Please select a level to load.")
+                return
+
+            # Get the level name from the selection
+            selected_text = listbox.get(selection[0])
+            level_name = selected_text.split(": ", 1)[1]
+            result[0] = level_name
+            dialog.destroy()
+
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        tk.Button(button_frame, text="Load Level", command=load_selected,
+                 bg="#4CAF50", fg="white", font=("Arial", 10, "bold")).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        tk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+
+        dialog.wait_window()
+        return result[0]
+
     def load_file(self):
         p = filedialog.askopenfilename(filetypes=[("DAT","*.dat")])
         if not p: return
-        
+
+        import os
+
+        # Check file size - if over 1GB, show level select
+        file_size = os.path.getsize(p)
+        if file_size > 1024 * 1024 * 1024:  # 1GB in bytes
+            # This is a large multi-level file, show level selector
+            selected_level = self.show_level_select_dialog(p)
+            if selected_level is None:
+                return  # User cancelled
+            # Extract the selected level from the file
+            # For now, we'll still load the whole file but notify the user
+            # In a full implementation, you'd extract just the selected level
+            messagebox.showinfo("Large File Detected",
+                f"File size: {file_size / (1024*1024*1024):.2f} GB\n"
+                f"Selected level: {selected_level}\n\n"
+                f"Note: Currently loading entire file. Level extraction coming soon.")
+
         # Clear existing data for fresh load
         self.loaded_maps = []
         self._load_map_file(p, is_primary=True)
@@ -2640,10 +3234,11 @@ class KatamariEditor:
         })
         
         if is_primary:
-            self.file_sequence = map_sequence
+            # Create a new list for combined editing (don't share reference with map's file_sequence)
+            self.file_sequence = list(map_sequence)
             self.current_map_name = map_name
         else:
-            # Merge sequences
+            # Merge sequences into combined file_sequence (each map keeps its own separate file_sequence)
             self.file_sequence.extend(map_sequence)
         
         # Update title
@@ -2914,6 +3509,7 @@ class KatamariEditor:
             choice = tk.Toplevel(self.root)
             choice.title("Save Which Map?")
             choice.geometry("300x150")
+            choice.resizable(True, True)
             choice.transient(self.root)
             choice.grab_set()
             
