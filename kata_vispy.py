@@ -72,29 +72,32 @@ class Theme:
                 background-color: {cls.BG_DARK};
                 color: {cls.TEXT_PRIMARY};
                 font-family: 'Segoe UI', 'Arial', sans-serif;
-                font-size: 11px;
+                font-size: 13px;
             }}
             QGroupBox {{
                 background-color: {cls.BG_MID};
                 border: 1px solid {cls.BG_LIGHT};
                 border-radius: 6px;
-                margin-top: 12px;
-                padding: 10px;
+                margin-top: 14px;
+                padding: 12px;
                 font-weight: bold;
+                font-size: 13px;
             }}
             QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px;
                 color: {cls.ACCENT};
+                font-size: 14px;
             }}
             QPushButton {{
                 background-color: {cls.ACCENT_SECONDARY};
                 border: none;
                 border-radius: 4px;
-                padding: 8px 16px;
+                padding: 10px 18px;
                 color: {cls.TEXT_PRIMARY};
                 font-weight: bold;
+                font-size: 13px;
             }}
             QPushButton:hover {{
                 background-color: {cls.BG_LIGHT};
@@ -117,10 +120,11 @@ class Theme:
                 border: 1px solid {cls.BG_LIGHT};
                 border-radius: 4px;
                 padding: 4px;
+                font-size: 13px;
             }}
             QListWidget::item {{
-                padding: 4px 8px;
-                border-radius: 2px;
+                padding: 6px 10px;
+                border-radius: 3px;
             }}
             QListWidget::item:selected {{
                 background-color: {cls.ACCENT};
@@ -133,8 +137,9 @@ class Theme:
                 background-color: {cls.BG_MID};
                 border: 1px solid {cls.BG_LIGHT};
                 border-radius: 4px;
-                padding: 6px;
+                padding: 8px;
                 color: {cls.TEXT_PRIMARY};
+                font-size: 13px;
             }}
             QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
                 border-color: {cls.ACCENT};
@@ -174,6 +179,8 @@ class Theme:
                 background-color: {cls.BG_MID};
                 color: {cls.SUCCESS};
                 font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 12px;
+                padding: 4px;
             }}
             QMenuBar {{
                 background-color: {cls.BG_MID};
@@ -197,9 +204,10 @@ class Theme:
             QTabBar::tab {{
                 background-color: {cls.BG_DARK};
                 color: {cls.TEXT_SECONDARY};
-                padding: 8px 16px;
+                padding: 10px 20px;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
+                font-size: 13px;
             }}
             QTabBar::tab:selected {{
                 background-color: {cls.BG_MID};
@@ -220,12 +228,26 @@ class Theme:
                 border-color: {cls.ACCENT};
             }}
             QLabel#title {{
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: bold;
                 color: {cls.ACCENT};
             }}
             QLabel#info {{
                 color: {cls.TEXT_SECONDARY};
+                font-size: 12px;
+            }}
+            QLabel#section {{
+                font-size: 14px;
+                font-weight: bold;
+                color: {cls.TEXT_PRIMARY};
+                padding: 4px 0px;
+            }}
+            QMenuBar {{
+                font-size: 13px;
+                padding: 2px;
+            }}
+            QMenu {{
+                font-size: 13px;
             }}
         """
 
@@ -567,6 +589,94 @@ class PositionEditor(QGroupBox):
         self.position_changed.emit()
 
 
+class EntityInfoPanel(QGroupBox):
+    """Panel showing detailed information about selected entity"""
+
+    def __init__(self, parent=None):
+        super().__init__("Entity Info", parent)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QFormLayout(self)
+        layout.setSpacing(8)
+
+        # Entity name
+        self.name_label = QLabel("-")
+        self.name_label.setWordWrap(True)
+        self.name_label.setStyleSheet(f"color: {Theme.ACCENT}; font-weight: bold; font-size: 14px;")
+        layout.addRow("Name:", self.name_label)
+
+        # Entity ID
+        self.id_label = QLabel("-")
+        self.id_label.setStyleSheet("font-family: monospace;")
+        layout.addRow("ID:", self.id_label)
+
+        # Size
+        self.size_label = QLabel("-")
+        layout.addRow("Size:", self.size_label)
+
+        # Position
+        self.pos_label = QLabel("-")
+        self.pos_label.setStyleSheet("font-family: monospace;")
+        layout.addRow("Position:", self.pos_label)
+
+        # Rotation (quaternion)
+        self.rot_label = QLabel("-")
+        self.rot_label.setStyleSheet("font-family: monospace; font-size: 11px;")
+        self.rot_label.setWordWrap(True)
+        layout.addRow("Rotation:", self.rot_label)
+
+        # Map
+        self.map_label = QLabel("-")
+        layout.addRow("Map:", self.map_label)
+
+        # Pack ID
+        self.pack_label = QLabel("-")
+        layout.addRow("Pack:", self.pack_label)
+
+        # Behavior types
+        self.attack_label = QLabel("-")
+        layout.addRow("Attack:", self.attack_label)
+
+        self.move_label = QLabel("-")
+        layout.addRow("Move:", self.move_label)
+
+        self.escape_label = QLabel("-")
+        layout.addRow("Escape:", self.escape_label)
+
+    def update_info(self, entity, item_db=None):
+        """Update display with entity information"""
+        if entity is None:
+            self.name_label.setText("-")
+            self.id_label.setText("-")
+            self.size_label.setText("-")
+            self.pos_label.setText("-")
+            self.rot_label.setText("-")
+            self.map_label.setText("-")
+            self.pack_label.setText("-")
+            self.attack_label.setText("-")
+            self.move_label.setText("-")
+            self.escape_label.setText("-")
+            return
+
+        # Get name from database
+        db_key = entity['id'].lstrip('0') or '0'
+        info = (item_db or {}).get(db_key, {})
+        name = info.get('obj_en', f"Entity {entity['id']}")
+        size = info.get('size', '-')
+
+        self.name_label.setText(name)
+        self.id_label.setText(entity['id'])
+        self.size_label.setText(str(size))
+        self.pos_label.setText(f"X: {entity['x']:.2f}\nY: {entity['y']:.2f}\nZ: {entity['z']:.2f}")
+        self.rot_label.setText(f"({entity['rx']:.3f}, {entity['ry']:.3f}, {entity['rz']:.3f}, {entity['rw']:.3f})")
+        self.map_label.setText(entity.get('map_name', '-'))
+        self.pack_label.setText(entity.get('pack', '-') or '-')
+        self.attack_label.setText(entity.get('atk', '-') or '-')
+        self.move_label.setText(entity.get('mov', '-') or '-')
+        self.escape_label.setText(entity.get('esc', '-') or '-')
+
+
 class KatamariEditorVispy(QMainWindow):
     """Main editor window"""
 
@@ -659,10 +769,39 @@ class KatamariEditorVispy(QMainWindow):
         tools_layout = QVBoxLayout(tools_widget)
         tools_layout.setAlignment(Qt.AlignTop)
 
+        # Entity Info panel
+        self.entity_info = EntityInfoPanel()
+        tools_layout.addWidget(self.entity_info)
+
         # Position editor
         self.position_editor = PositionEditor()
         self.position_editor.position_changed.connect(self._on_position_changed)
         tools_layout.addWidget(self.position_editor)
+
+        # Visualization options
+        viz_group = QGroupBox("Visualization")
+        viz_layout = QVBoxLayout(viz_group)
+
+        # Color mode
+        color_row = QHBoxLayout()
+        color_row.addWidget(QLabel("Color by:"))
+        self.color_mode = QComboBox()
+        self.color_mode.addItems(["Default", "By ID", "By Size", "By Height", "By Map"])
+        self.color_mode.currentTextChanged.connect(self._on_color_mode_changed)
+        color_row.addWidget(self.color_mode)
+        viz_layout.addLayout(color_row)
+
+        # Entity size slider
+        size_row = QHBoxLayout()
+        size_row.addWidget(QLabel("Point Size:"))
+        self.point_size_slider = QSlider(Qt.Horizontal)
+        self.point_size_slider.setRange(2, 30)
+        self.point_size_slider.setValue(8)
+        self.point_size_slider.valueChanged.connect(self._on_point_size_changed)
+        size_row.addWidget(self.point_size_slider)
+        viz_layout.addLayout(size_row)
+
+        tools_layout.addWidget(viz_group)
 
         # Quick actions
         actions_group = QGroupBox("Quick Actions")
@@ -747,10 +886,13 @@ class KatamariEditorVispy(QMainWindow):
 
         if indices:
             ent = self.entities[indices[-1]]
+            self.entity_info.update_info(ent, self.item_db)
             db_key = ent['id'].lstrip('0') or '0'
             info = self.item_db.get(db_key, {})
             name = info.get('obj_en', f"Entity {ent['id']}")
             self.statusBar().showMessage(f"Selected: {name} | ID: {ent['id']} | Pos: ({ent['x']:.1f}, {ent['y']:.1f}, {ent['z']:.1f})")
+        else:
+            self.entity_info.update_info(None)
 
     def _on_position_changed(self):
         """Handle position change from editor"""
@@ -790,6 +932,106 @@ class KatamariEditorVispy(QMainWindow):
         """Zoom camera to fit all entities"""
         if self.entities:
             self.vispy_canvas.set_entities(self.entities, self.selected_indices)
+
+    def _on_color_mode_changed(self, mode):
+        """Change entity coloring mode"""
+        if not self.entities:
+            return
+
+        positions = self.vispy_canvas.entity_positions
+        if positions is None:
+            return
+
+        n = len(self.entities)
+        colors = np.zeros((n, 4), dtype=np.float32)
+
+        if mode == "Default":
+            colors[:] = [0.3, 0.7, 0.9, 0.7]
+
+        elif mode == "By ID":
+            # Color by entity ID hash
+            for i, ent in enumerate(self.entities):
+                id_hash = hash(ent['id']) % 360
+                # HSV to RGB (simplified)
+                h = id_hash / 60.0
+                c = 0.8
+                x = c * (1 - abs(h % 2 - 1))
+                if h < 1:
+                    r, g, b = c, x, 0
+                elif h < 2:
+                    r, g, b = x, c, 0
+                elif h < 3:
+                    r, g, b = 0, c, x
+                elif h < 4:
+                    r, g, b = 0, x, c
+                elif h < 5:
+                    r, g, b = x, 0, c
+                else:
+                    r, g, b = c, 0, x
+                colors[i] = [r, g, b, 0.8]
+
+        elif mode == "By Size":
+            # Color by entity size from database
+            sizes = []
+            for ent in self.entities:
+                db_key = ent['id'].lstrip('0') or '0'
+                info = self.item_db.get(db_key, {})
+                try:
+                    size = float(info.get('size', 0))
+                except:
+                    size = 0
+                sizes.append(size)
+
+            sizes = np.array(sizes)
+            if sizes.max() > sizes.min():
+                normalized = (sizes - sizes.min()) / (sizes.max() - sizes.min())
+            else:
+                normalized = np.zeros(n)
+
+            # Blue (small) to Red (large)
+            for i, val in enumerate(normalized):
+                colors[i] = [val, 0.3, 1 - val, 0.8]
+
+        elif mode == "By Height":
+            # Color by Y position (height)
+            heights = np.array([e['y'] for e in self.entities])
+            if heights.max() > heights.min():
+                normalized = (heights - heights.min()) / (heights.max() - heights.min())
+            else:
+                normalized = np.zeros(n)
+
+            # Gradient from purple (low) to yellow (high)
+            for i, val in enumerate(normalized):
+                colors[i] = [val, val, 1 - val, 0.8]
+
+        elif mode == "By Map":
+            # Color each map differently
+            map_colors = [
+                [0.3, 0.7, 0.9, 0.8],  # Blue
+                [0.9, 0.5, 0.3, 0.8],  # Orange
+                [0.4, 0.9, 0.4, 0.8],  # Green
+                [0.9, 0.3, 0.6, 0.8],  # Pink
+                [0.7, 0.7, 0.3, 0.8],  # Yellow
+            ]
+            for i, ent in enumerate(self.entities):
+                map_idx = ent.get('map_index', 0) % len(map_colors)
+                colors[i] = map_colors[map_idx]
+
+        # Update scatter colors
+        self.vispy_canvas.scatter.set_data(
+            pos=positions,
+            face_color=colors,
+            edge_color='white',
+            edge_width=0.5,
+            size=self.point_size_slider.value()
+        )
+        self.vispy_canvas.canvas.update()
+
+    def _on_point_size_changed(self, size):
+        """Change entity point size"""
+        if self.vispy_canvas.entity_positions is not None:
+            # Re-apply current color mode with new size
+            self._on_color_mode_changed(self.color_mode.currentText())
 
     # ============== File Operations ==============
 
