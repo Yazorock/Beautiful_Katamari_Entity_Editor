@@ -8,6 +8,7 @@ import sys
 import re
 import csv
 import os
+import math
 import numpy as np
 from pathlib import Path
 
@@ -18,10 +19,11 @@ from PyQt5.QtWidgets import (
     QSlider, QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox,
     QGroupBox, QFormLayout, QFileDialog, QMessageBox, QLineEdit,
     QScrollArea, QFrame, QSizePolicy, QAbstractItemView, QTabWidget,
-    QGridLayout, QStatusBar, QMenuBar, QMenu, QAction, QToolBar
+    QGridLayout, QStatusBar, QMenuBar, QMenu, QAction, QToolBar,
+    QRadioButton, QButtonGroup, QInputDialog
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSize
-from PyQt5.QtGui import QFont, QColor, QPalette, QIcon, QKeySequence
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSize, QPoint
+from PyQt5.QtGui import QFont, QColor, QPalette, QIcon, QKeySequence, QCursor
 
 # Vispy for GPU-accelerated 3D
 from vispy import app, scene
@@ -227,6 +229,17 @@ class Theme:
                 background-color: {cls.ACCENT};
                 border-color: {cls.ACCENT};
             }}
+            QRadioButton::indicator {{
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background-color: {cls.BG_MID};
+                border: 1px solid {cls.BG_LIGHT};
+            }}
+            QRadioButton::indicator:checked {{
+                background-color: {cls.ACCENT};
+                border-color: {cls.ACCENT};
+            }}
             QLabel#title {{
                 font-size: 16px;
                 font-weight: bold;
@@ -255,7 +268,8 @@ class Theme:
 class VispyCanvas(QWidget):
     """Vispy 3D canvas widget for entity visualization"""
 
-    entity_clicked = pyqtSignal(int)  # Emits entity index
+    entity_clicked = pyqtSignal(int, bool, bool)  # index, shift, ctrl
+    paint_select = pyqtSignal(float, float, float)  # x, y, radius in 3D
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -293,14 +307,25 @@ class VispyCanvas(QWidget):
             parent=self.view.scene
         )
 
+        # Mesh visual for generated mesh
+        self.mesh_visual = None
+
         # Store entity positions for picking
         self.entity_positions = None
+        self.entity_sizes = None
         self.entities = []
+
+        # Selection mode
+        self.select_mode = "CLICK"  # NONE, CLICK, PAINT
+        self.brush_size = 25.0
+        self.is_painting = False
 
         # Connect events
         self.canvas.events.mouse_press.connect(self._on_mouse_press)
+        self.canvas.events.mouse_move.connect(self._on_mouse_move)
+        self.canvas.events.mouse_release.connect(self._on_mouse_release)
 
-    def set_entities(self, entities, selected_indices=None):
+    def set_entities(self, entities, selected_indices=None, sizes=None, use_size_scaling=False):
         """Update the displayed entities"""
         self.entities = entities
 
@@ -321,14 +346,22 @@ class VispyCanvas(QWidget):
         colors = np.full((len(entities), 4), [0.3, 0.7, 0.9, 0.7], dtype=np.float32)
 
         # Set marker sizes based on entity size if available
-        sizes = np.full(len(entities), 8, dtype=np.float32)
+        if use_size_scaling and sizes is not None:
+            # Clip sizes, treating >9M as outliers (size 200)
+            sizes = np.array(sizes, dtype=np.float32)
+            sizes = np.where(sizes > 9000000, 200, sizes)
+            marker_sizes = np.clip(sizes / 50.0, 3, 50)
+            self.entity_sizes = marker_sizes
+        else:
+            marker_sizes = np.full(len(entities), 8, dtype=np.float32)
+            self.entity_sizes = marker_sizes
 
         self.scatter.set_data(
             pos=positions,
             face_color=colors,
             edge_color='white',
             edge_width=0.5,
-            size=sizes
+            size=marker_sizes
         )
 
         # Update highlights
@@ -345,15 +378,21 @@ class VispyCanvas(QWidget):
 
     def _update_highlights(self, selected_indices):
         """Update highlight markers for selected entities"""
-        if not selected_indices or not self.entity_positions is not None:
+        if not selected_indices or self.entity_positions is None or len(self.entity_positions) == 0:
+            self.highlight_scatter.set_data(pos=np.zeros((0, 3)))
+            return
+
+        # Filter valid indices
+        valid_indices = [i for i in selected_indices if i < len(self.entity_positions)]
+        if not valid_indices:
             self.highlight_scatter.set_data(pos=np.zeros((0, 3)))
             return
 
         # Get positions of selected entities
-        selected_positions = self.entity_positions[selected_indices]
+        selected_positions = self.entity_positions[valid_indices]
 
         # Create highlight colors (gold with red edge)
-        colors = np.full((len(selected_indices), 4), [1.0, 0.85, 0.0, 1.0], dtype=np.float32)
+        colors = np.full((len(valid_indices), 4), [1.0, 0.85, 0.0, 1.0], dtype=np.float32)
 
         self.highlight_scatter.set_data(
             pos=selected_positions,
@@ -374,16 +413,86 @@ class VispyCanvas(QWidget):
         if event.button != 1 or self.entity_positions is None:
             return
 
-        # Get click position in screen coordinates
-        pos = event.pos
+        if self.select_mode == "NONE":
+            return
 
-        # Transform to find nearest entity
-        # This is a simplified picking - for production would use GPU picking
-        tr = self.view.scene.transform
+        if self.select_mode == "PAINT":
+            self.is_painting = True
+            self._do_paint_select(event)
+            return
 
-        # For now, emit a basic pick signal
-        # TODO: Implement proper 3D picking
-        pass
+        if self.select_mode == "CLICK":
+            self._do_click_select(event)
+
+    def _on_mouse_move(self, event):
+        """Handle mouse move for paint selection"""
+        if self.is_painting and self.select_mode == "PAINT":
+            self._do_paint_select(event)
+
+    def _on_mouse_release(self, event):
+        """Handle mouse release"""
+        self.is_painting = False
+
+    def _do_click_select(self, event):
+        """Perform click selection - find nearest entity"""
+        if self.entity_positions is None or len(self.entity_positions) == 0:
+            return
+
+        # Get click position
+        click_pos = event.pos
+
+        # Transform entity positions to screen coordinates
+        transform = self.view.scene.transform
+        screen_positions = transform.map(self.entity_positions)[:, :2]
+
+        # Find nearest entity to click
+        distances = np.sqrt(np.sum((screen_positions - click_pos[:2])**2, axis=1))
+        nearest_idx = np.argmin(distances)
+
+        # Only select if within reasonable distance (50 pixels)
+        if distances[nearest_idx] < 50:
+            shift = 'Shift' in event.modifiers
+            ctrl = 'Control' in event.modifiers
+            self.entity_clicked.emit(nearest_idx, shift, ctrl)
+
+    def _do_paint_select(self, event):
+        """Perform paint selection - select entities within brush radius"""
+        if self.entity_positions is None or len(self.entity_positions) == 0:
+            return
+
+        click_pos = event.pos
+
+        # Transform entity positions to screen coordinates
+        transform = self.view.scene.transform
+        screen_positions = transform.map(self.entity_positions)[:, :2]
+
+        # Find entities within brush radius
+        distances = np.sqrt(np.sum((screen_positions - click_pos[:2])**2, axis=1))
+
+        # Emit signal for each entity within brush
+        for idx in np.where(distances < self.brush_size)[0]:
+            self.entity_clicked.emit(idx, True, False)  # Always additive in paint mode
+
+    def set_mesh(self, vertices, faces, color=(0.5, 0.8, 0.5, 0.5)):
+        """Display a mesh"""
+        if self.mesh_visual is not None:
+            self.mesh_visual.parent = None
+
+        if vertices is not None and faces is not None:
+            self.mesh_visual = visuals.Mesh(
+                vertices=vertices,
+                faces=faces,
+                color=color,
+                parent=self.view.scene
+            )
+        self.canvas.update()
+
+    def clear_mesh(self):
+        """Remove the mesh"""
+        if self.mesh_visual is not None:
+            self.mesh_visual.parent = None
+            self.mesh_visual = None
+        self.canvas.update()
 
 
 class EntityListWidget(QWidget):
@@ -490,6 +599,20 @@ class EntityListWidget(QWidget):
                 item.setSelected(True)
 
         self.list_widget.blockSignals(False)
+
+    def apply_size_filter(self, min_size, max_size, item_db):
+        """Filter entities by size"""
+        self.display_mapping = []
+        for i, ent in enumerate(self.entities):
+            db_key = ent['id'].lstrip('0') or '0'
+            info = item_db.get(db_key, {})
+            try:
+                size = float(info.get('size', 0))
+            except:
+                size = 0
+            if min_size <= size <= max_size:
+                self.display_mapping.append(i)
+        self._refresh_list()
 
 
 class PositionEditor(QGroupBox):
@@ -677,6 +800,462 @@ class EntityInfoPanel(QGroupBox):
         self.escape_label.setText(entity.get('esc', '-') or '-')
 
 
+class QuaternionViewer(QGroupBox):
+    """Quaternion visualization and Euler angle conversion"""
+
+    rotation_changed = pyqtSignal(float, float, float, float)  # x, y, z, w
+
+    def __init__(self, parent=None):
+        super().__init__("Quaternion Viewer", parent)
+        self._setup_ui()
+        self.is_updating = False
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        # Quaternion display
+        quat_label = QLabel("Quaternion (X, Y, Z, W):")
+        quat_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(quat_label)
+
+        self.quat_display = QLabel("X: 0.000  Y: 0.000  Z: 0.000  W: 1.000")
+        self.quat_display.setStyleSheet("font-family: monospace; background: #1a1a2e; padding: 5px;")
+        layout.addWidget(self.quat_display)
+
+        # Euler angles
+        euler_label = QLabel("Euler Angles (degrees):")
+        euler_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(euler_label)
+
+        self.euler_sliders = {}
+        self.euler_spinboxes = {}
+
+        for axis, name in [('roll', 'Roll (X)'), ('pitch', 'Pitch (Y)'), ('yaw', 'Yaw (Z)')]:
+            row = QHBoxLayout()
+
+            label = QLabel(f"{name}:")
+            label.setMinimumWidth(70)
+            row.addWidget(label)
+
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(-180, 180)
+            slider.setValue(0)
+            slider.valueChanged.connect(lambda v, a=axis: self._on_euler_slider_change(a))
+            row.addWidget(slider, stretch=2)
+
+            spinbox = QDoubleSpinBox()
+            spinbox.setRange(-180, 180)
+            spinbox.setDecimals(1)
+            spinbox.setValue(0)
+            spinbox.valueChanged.connect(lambda v, a=axis: self._on_euler_spinbox_change(a))
+            row.addWidget(spinbox)
+
+            self.euler_sliders[axis] = slider
+            self.euler_spinboxes[axis] = spinbox
+
+            layout.addLayout(row)
+
+        # Apply button
+        apply_btn = QPushButton("Apply Rotation")
+        apply_btn.setObjectName("primary")
+        apply_btn.clicked.connect(self._apply_rotation)
+        layout.addWidget(apply_btn)
+
+    def update_quaternion(self, x, y, z, w):
+        """Update display from quaternion values"""
+        self.is_updating = True
+
+        self.quat_display.setText(f"X: {x:.3f}  Y: {y:.3f}  Z: {z:.3f}  W: {w:.3f}")
+
+        # Convert to Euler
+        roll, pitch, yaw = self.quaternion_to_euler(x, y, z, w)
+
+        for axis, val in [('roll', roll), ('pitch', pitch), ('yaw', yaw)]:
+            self.euler_sliders[axis].setValue(int(val))
+            self.euler_spinboxes[axis].setValue(val)
+
+        self.is_updating = False
+
+    def _on_euler_slider_change(self, axis):
+        if self.is_updating:
+            return
+        self.euler_spinboxes[axis].blockSignals(True)
+        self.euler_spinboxes[axis].setValue(self.euler_sliders[axis].value())
+        self.euler_spinboxes[axis].blockSignals(False)
+        self._update_quat_preview()
+
+    def _on_euler_spinbox_change(self, axis):
+        if self.is_updating:
+            return
+        self.euler_sliders[axis].blockSignals(True)
+        self.euler_sliders[axis].setValue(int(self.euler_spinboxes[axis].value()))
+        self.euler_sliders[axis].blockSignals(False)
+        self._update_quat_preview()
+
+    def _update_quat_preview(self):
+        """Update quaternion preview from Euler angles"""
+        roll = self.euler_spinboxes['roll'].value()
+        pitch = self.euler_spinboxes['pitch'].value()
+        yaw = self.euler_spinboxes['yaw'].value()
+
+        x, y, z, w = self.euler_to_quaternion(roll, pitch, yaw)
+        self.quat_display.setText(f"X: {x:.3f}  Y: {y:.3f}  Z: {z:.3f}  W: {w:.3f}")
+
+    def _apply_rotation(self):
+        """Emit rotation changed signal"""
+        roll = self.euler_spinboxes['roll'].value()
+        pitch = self.euler_spinboxes['pitch'].value()
+        yaw = self.euler_spinboxes['yaw'].value()
+
+        x, y, z, w = self.euler_to_quaternion(roll, pitch, yaw)
+        self.rotation_changed.emit(x, y, z, w)
+
+    @staticmethod
+    def quaternion_to_euler(x, y, z, w):
+        """Convert quaternion to Euler angles (roll, pitch, yaw) in degrees"""
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        roll = math.atan2(sinr_cosp, cosr_cosp)
+
+        sinp = 2 * (w * y - z * x)
+        if abs(sinp) >= 1:
+            pitch = math.copysign(math.pi / 2, sinp)
+        else:
+            pitch = math.asin(sinp)
+
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+
+        return math.degrees(roll), math.degrees(pitch), math.degrees(yaw)
+
+    @staticmethod
+    def euler_to_quaternion(roll, pitch, yaw):
+        """Convert Euler angles (in degrees) to quaternion (x, y, z, w)"""
+        roll_rad = math.radians(roll)
+        pitch_rad = math.radians(pitch)
+        yaw_rad = math.radians(yaw)
+
+        cy = math.cos(yaw_rad * 0.5)
+        sy = math.sin(yaw_rad * 0.5)
+        cp = math.cos(pitch_rad * 0.5)
+        sp = math.sin(pitch_rad * 0.5)
+        cr = math.cos(roll_rad * 0.5)
+        sr = math.sin(roll_rad * 0.5)
+
+        w = cr * cp * cy + sr * sp * sy
+        x = sr * cp * cy - cr * sp * sy
+        y = cr * sp * cy + sr * cp * sy
+        z = cr * cp * sy - sr * sp * cy
+
+        return x, y, z, w
+
+
+class BatchEditor(QGroupBox):
+    """Batch editor for entity properties"""
+
+    changes_committed = pyqtSignal(dict)
+
+    def __init__(self, parent=None):
+        super().__init__("Batch Editor", parent)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        # Create entry fields
+        form = QFormLayout()
+
+        self.entries = {}
+        fields = [
+            ('index', 'Entity Index'),
+            ('atk', 'Attack Type'),
+            ('mov', 'Move Type'),
+            ('esc', 'Escape Type'),
+            ('spd', 'Speed'),
+            ('pth', 'Path ID'),
+            ('scale', 'Scale'),
+            ('plus_type', 'Plus Type'),
+            ('parent_type', 'Parent Type'),
+            ('clash_type', 'Clash Type'),
+        ]
+
+        for key, label in fields:
+            entry = QLineEdit()
+            entry.setPlaceholderText(f"Enter {label.lower()}")
+            self.entries[key] = entry
+            form.addRow(f"{label}:", entry)
+
+        layout.addLayout(form)
+
+        # Commit button
+        commit_btn = QPushButton("COMMIT CHANGES")
+        commit_btn.setObjectName("primary")
+        commit_btn.clicked.connect(self._commit_changes)
+        layout.addWidget(commit_btn)
+
+    def update_for_selection(self, entities, selected_indices):
+        """Update fields for selected entities"""
+        if not selected_indices:
+            for entry in self.entries.values():
+                entry.clear()
+            return
+
+        # Show values from last selected entity
+        ent = entities[selected_indices[-1]]
+        self.entries['index'].setText(ent.get('id', ''))
+        self.entries['atk'].setText(ent.get('atk', ''))
+        self.entries['mov'].setText(ent.get('mov', ''))
+        self.entries['esc'].setText(ent.get('esc', ''))
+        self.entries['spd'].setText(ent.get('spd', ''))
+        self.entries['pth'].setText(ent.get('pth', ''))
+        self.entries['scale'].setText(ent.get('scale', ''))
+        self.entries['plus_type'].setText(ent.get('plus_type', ''))
+        self.entries['parent_type'].setText(ent.get('parent_type', ''))
+        self.entries['clash_type'].setText(ent.get('clash_type', ''))
+
+    def _commit_changes(self):
+        """Emit changes to be committed"""
+        changes = {}
+        for key, entry in self.entries.items():
+            text = entry.text().strip()
+            if text:
+                changes[key] = text
+        if changes:
+            self.changes_committed.emit(changes)
+
+
+class SizeFilterPanel(QGroupBox):
+    """Size filter panel"""
+
+    filter_changed = pyqtSignal(float, float, bool)
+
+    def __init__(self, parent=None):
+        super().__init__("Size Filter", parent)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        # Enable checkbox
+        self.enabled = QCheckBox("Enable Size Filter")
+        self.enabled.stateChanged.connect(self._emit_filter)
+        layout.addWidget(self.enabled)
+
+        # Min size
+        min_row = QHBoxLayout()
+        min_row.addWidget(QLabel("Min:"))
+        self.min_spin = QDoubleSpinBox()
+        self.min_spin.setRange(0, 100000000)
+        self.min_spin.setValue(0)
+        self.min_spin.valueChanged.connect(self._emit_filter)
+        min_row.addWidget(self.min_spin)
+        layout.addLayout(min_row)
+
+        # Max size
+        max_row = QHBoxLayout()
+        max_row.addWidget(QLabel("Max:"))
+        self.max_spin = QDoubleSpinBox()
+        self.max_spin.setRange(0, 100000000)
+        self.max_spin.setValue(10000000)
+        self.max_spin.valueChanged.connect(self._emit_filter)
+        max_row.addWidget(self.max_spin)
+        layout.addLayout(max_row)
+
+    def _emit_filter(self):
+        self.filter_changed.emit(
+            self.min_spin.value(),
+            self.max_spin.value(),
+            self.enabled.isChecked()
+        )
+
+
+class MeshGeneratorPanel(QGroupBox):
+    """Mesh generation panel"""
+
+    generate_requested = pyqtSignal(dict)
+    clear_requested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__("Mesh Generator", parent)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        # Grid resolution
+        res_row = QHBoxLayout()
+        res_row.addWidget(QLabel("Resolution:"))
+        self.resolution = QSlider(Qt.Horizontal)
+        self.resolution.setRange(5, 100)
+        self.resolution.setValue(20)
+        res_row.addWidget(self.resolution)
+        self.res_label = QLabel("20")
+        self.resolution.valueChanged.connect(lambda v: self.res_label.setText(str(v)))
+        res_row.addWidget(self.res_label)
+        layout.addLayout(res_row)
+
+        # Averaging
+        avg_row = QHBoxLayout()
+        avg_row.addWidget(QLabel("Averaging:"))
+        self.averaging = QSlider(Qt.Horizontal)
+        self.averaging.setRange(5, 100)
+        self.averaging.setValue(15)
+        avg_row.addWidget(self.averaging)
+        self.avg_label = QLabel("1.5")
+        self.averaging.valueChanged.connect(lambda v: self.avg_label.setText(f"{v/10:.1f}"))
+        avg_row.addWidget(self.avg_label)
+        layout.addLayout(avg_row)
+
+        # Options
+        self.selected_only = QCheckBox("Selected entities only")
+        layout.addWidget(self.selected_only)
+
+        self.exclude_large = QCheckBox("Exclude size >9M")
+        self.exclude_large.setChecked(True)
+        layout.addWidget(self.exclude_large)
+
+        self.floor_priority = QCheckBox("Prioritize floors")
+        self.floor_priority.setChecked(True)
+        layout.addWidget(self.floor_priority)
+
+        # Mesh alpha
+        alpha_row = QHBoxLayout()
+        alpha_row.addWidget(QLabel("Opacity:"))
+        self.mesh_alpha = QSlider(Qt.Horizontal)
+        self.mesh_alpha.setRange(10, 100)
+        self.mesh_alpha.setValue(50)
+        alpha_row.addWidget(self.mesh_alpha)
+        layout.addLayout(alpha_row)
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        gen_btn = QPushButton("Generate")
+        gen_btn.setObjectName("success")
+        gen_btn.clicked.connect(self._generate)
+        btn_row.addWidget(gen_btn)
+
+        clear_btn = QPushButton("Clear")
+        clear_btn.clicked.connect(self.clear_requested.emit)
+        btn_row.addWidget(clear_btn)
+        layout.addLayout(btn_row)
+
+    def _generate(self):
+        self.generate_requested.emit({
+            'resolution': self.resolution.value(),
+            'averaging': self.averaging.value() / 10.0,
+            'selected_only': self.selected_only.isChecked(),
+            'exclude_large': self.exclude_large.isChecked(),
+            'floor_priority': self.floor_priority.isChecked(),
+            'alpha': self.mesh_alpha.value() / 100.0,
+        })
+
+
+class PatternPlacerPanel(QGroupBox):
+    """Pattern placement tool"""
+
+    pattern_applied = pyqtSignal(str, dict)
+
+    def __init__(self, parent=None):
+        super().__init__("Pattern Placer", parent)
+        self._setup_ui()
+        self.waypoints = []
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        # Pattern type
+        type_row = QHBoxLayout()
+        type_row.addWidget(QLabel("Pattern:"))
+        self.pattern_group = QButtonGroup(self)
+        for ptype in ["Circle", "Line", "Path"]:
+            rb = QRadioButton(ptype)
+            if ptype == "Circle":
+                rb.setChecked(True)
+            self.pattern_group.addButton(rb)
+            type_row.addWidget(rb)
+        layout.addLayout(type_row)
+
+        # Selection count
+        self.count_label = QLabel("Selected: 0")
+        self.count_label.setStyleSheet(f"color: {Theme.ACCENT};")
+        layout.addWidget(self.count_label)
+
+        # Radius (for circle)
+        radius_row = QHBoxLayout()
+        radius_row.addWidget(QLabel("Radius:"))
+        self.radius_slider = QSlider(Qt.Horizontal)
+        self.radius_slider.setRange(1, 500)
+        self.radius_slider.setValue(50)
+        radius_row.addWidget(self.radius_slider)
+        self.radius_spin = QSpinBox()
+        self.radius_spin.setRange(1, 5000)
+        self.radius_spin.setValue(50)
+        self.radius_slider.valueChanged.connect(self.radius_spin.setValue)
+        self.radius_spin.valueChanged.connect(self.radius_slider.setValue)
+        radius_row.addWidget(self.radius_spin)
+        layout.addLayout(radius_row)
+
+        # Spacing (for line/path)
+        spacing_row = QHBoxLayout()
+        spacing_row.addWidget(QLabel("Spacing:"))
+        self.spacing_slider = QSlider(Qt.Horizontal)
+        self.spacing_slider.setRange(1, 100)
+        self.spacing_slider.setValue(10)
+        spacing_row.addWidget(self.spacing_slider)
+        self.spacing_spin = QSpinBox()
+        self.spacing_spin.setRange(1, 1000)
+        self.spacing_spin.setValue(10)
+        self.spacing_slider.valueChanged.connect(self.spacing_spin.setValue)
+        self.spacing_spin.valueChanged.connect(self.spacing_slider.setValue)
+        spacing_row.addWidget(self.spacing_spin)
+        layout.addLayout(spacing_row)
+
+        # Waypoints (for path)
+        wp_label = QLabel("Waypoints:")
+        layout.addWidget(wp_label)
+        self.waypoint_list = QListWidget()
+        self.waypoint_list.setMaximumHeight(80)
+        layout.addWidget(self.waypoint_list)
+
+        wp_btn_row = QHBoxLayout()
+        add_wp_btn = QPushButton("Add from Selection")
+        add_wp_btn.clicked.connect(lambda: self.pattern_applied.emit("add_waypoint", {}))
+        wp_btn_row.addWidget(add_wp_btn)
+        clear_wp_btn = QPushButton("Clear")
+        clear_wp_btn.clicked.connect(self._clear_waypoints)
+        wp_btn_row.addWidget(clear_wp_btn)
+        layout.addLayout(wp_btn_row)
+
+        # Apply button
+        apply_btn = QPushButton("APPLY PATTERN")
+        apply_btn.setObjectName("primary")
+        apply_btn.clicked.connect(self._apply_pattern)
+        layout.addWidget(apply_btn)
+
+    def update_count(self, count):
+        self.count_label.setText(f"Selected: {count}")
+
+    def add_waypoint(self, x, y, z):
+        self.waypoints.append((x, y, z))
+        self.waypoint_list.addItem(f"WP{len(self.waypoints)}: ({x:.1f}, {y:.1f}, {z:.1f})")
+
+    def _clear_waypoints(self):
+        self.waypoints = []
+        self.waypoint_list.clear()
+
+    def _apply_pattern(self):
+        checked = self.pattern_group.checkedButton()
+        if checked:
+            pattern_type = checked.text()
+            params = {
+                'radius': self.radius_spin.value(),
+                'spacing': self.spacing_spin.value(),
+                'waypoints': self.waypoints.copy(),
+            }
+            self.pattern_applied.emit(pattern_type, params)
+
+
 class KatamariEditorVispy(QMainWindow):
     """Main editor window"""
 
@@ -691,9 +1270,14 @@ class KatamariEditorVispy(QMainWindow):
         self.file_sequence = []
         self.loaded_maps = []
         self.selected_indices = []
+        self.display_mapping = []
         self.item_db = {}
         self.undo_stack = []
         self.max_undo = 50
+
+        # Visualization options
+        self.use_size_scaling = False
+        self.select_mode = "CLICK"
 
         # Load item database
         self._load_item_db()
@@ -723,6 +1307,12 @@ class KatamariEditorVispy(QMainWindow):
                         for row in reader:
                             key = row.get('index', '').lstrip('0') or '0'
                             self.item_db[key] = row
+                            # Parse size value
+                            try:
+                                self.item_db[key]['size_val'] = float(row.get('size', 0))
+                            except:
+                                self.item_db[key]['size_val'] = 0.0
+                    self.statusBar().showMessage(f"Loaded {len(self.item_db)} items from database")
                     break
                 except Exception as e:
                     print(f"Error loading CSV: {e}")
@@ -751,11 +1341,57 @@ class KatamariEditorVispy(QMainWindow):
 
         splitter.addWidget(left_panel)
 
-        # Center - 3D View
-        self.vispy_canvas = VispyCanvas()
-        splitter.addWidget(self.vispy_canvas)
+        # Center panel - 3D View + toolbar
+        center_panel = QWidget()
+        center_layout = QVBoxLayout(center_panel)
+        center_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Right panel - Tools
+        # Toolbar
+        toolbar = QWidget()
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(5, 5, 5, 5)
+
+        # Selection mode
+        toolbar_layout.addWidget(QLabel("Select:"))
+        self.select_mode_group = QButtonGroup(self)
+        for mode in ["NONE", "CLICK", "PAINT"]:
+            rb = QRadioButton(mode.title())
+            if mode == "CLICK":
+                rb.setChecked(True)
+            rb.toggled.connect(lambda checked, m=mode: self._set_select_mode(m) if checked else None)
+            self.select_mode_group.addButton(rb)
+            toolbar_layout.addWidget(rb)
+
+        # Brush size for paint mode
+        toolbar_layout.addWidget(QLabel("  Brush:"))
+        self.brush_size_slider = QSlider(Qt.Horizontal)
+        self.brush_size_slider.setRange(10, 100)
+        self.brush_size_slider.setValue(25)
+        self.brush_size_slider.setMaximumWidth(100)
+        self.brush_size_slider.valueChanged.connect(self._on_brush_size_changed)
+        toolbar_layout.addWidget(self.brush_size_slider)
+
+        # Size scaling toggle
+        self.size_scaling_cb = QCheckBox("Size by CSV")
+        self.size_scaling_cb.stateChanged.connect(self._on_size_scaling_changed)
+        toolbar_layout.addWidget(self.size_scaling_cb)
+
+        # Zoom fit button
+        zoom_btn = QPushButton("Zoom Fit")
+        zoom_btn.clicked.connect(self._zoom_to_fit)
+        toolbar_layout.addWidget(zoom_btn)
+
+        toolbar_layout.addStretch()
+        center_layout.addWidget(toolbar)
+
+        # 3D View
+        self.vispy_canvas = VispyCanvas()
+        self.vispy_canvas.entity_clicked.connect(self._on_entity_clicked)
+        center_layout.addWidget(self.vispy_canvas)
+
+        splitter.addWidget(center_panel)
+
+        # Right panel - Tools (tabbed)
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -765,43 +1401,20 @@ class KatamariEditorVispy(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        tools_widget = QWidget()
-        tools_layout = QVBoxLayout(tools_widget)
-        tools_layout.setAlignment(Qt.AlignTop)
+        # Tab widget for tools
+        tabs = QTabWidget()
 
-        # Entity Info panel
+        # Tab 1: Info & Position
+        tab1 = QWidget()
+        tab1_layout = QVBoxLayout(tab1)
+        tab1_layout.setAlignment(Qt.AlignTop)
+
         self.entity_info = EntityInfoPanel()
-        tools_layout.addWidget(self.entity_info)
+        tab1_layout.addWidget(self.entity_info)
 
-        # Position editor
         self.position_editor = PositionEditor()
         self.position_editor.position_changed.connect(self._on_position_changed)
-        tools_layout.addWidget(self.position_editor)
-
-        # Visualization options
-        viz_group = QGroupBox("Visualization")
-        viz_layout = QVBoxLayout(viz_group)
-
-        # Color mode
-        color_row = QHBoxLayout()
-        color_row.addWidget(QLabel("Color by:"))
-        self.color_mode = QComboBox()
-        self.color_mode.addItems(["Default", "By ID", "By Size", "By Height", "By Map"])
-        self.color_mode.currentTextChanged.connect(self._on_color_mode_changed)
-        color_row.addWidget(self.color_mode)
-        viz_layout.addLayout(color_row)
-
-        # Entity size slider
-        size_row = QHBoxLayout()
-        size_row.addWidget(QLabel("Point Size:"))
-        self.point_size_slider = QSlider(Qt.Horizontal)
-        self.point_size_slider.setRange(2, 30)
-        self.point_size_slider.setValue(8)
-        self.point_size_slider.valueChanged.connect(self._on_point_size_changed)
-        size_row.addWidget(self.point_size_slider)
-        viz_layout.addLayout(size_row)
-
-        tools_layout.addWidget(viz_group)
+        tab1_layout.addWidget(self.position_editor)
 
         # Quick actions
         actions_group = QGroupBox("Quick Actions")
@@ -816,22 +1429,96 @@ class KatamariEditorVispy(QMainWindow):
         undo_btn.clicked.connect(self.undo)
         actions_layout.addWidget(undo_btn)
 
-        zoom_btn = QPushButton("Zoom to Fit")
-        zoom_btn.clicked.connect(self._zoom_to_fit)
-        actions_layout.addWidget(zoom_btn)
+        tab1_layout.addWidget(actions_group)
+        tab1_layout.addStretch()
 
-        tools_layout.addWidget(actions_group)
+        tabs.addTab(tab1, "Info")
 
-        # Add stretch to push everything up
-        tools_layout.addStretch()
+        # Tab 2: Rotation & Batch
+        tab2 = QWidget()
+        tab2_layout = QVBoxLayout(tab2)
+        tab2_layout.setAlignment(Qt.AlignTop)
 
-        scroll.setWidget(tools_widget)
+        self.quat_viewer = QuaternionViewer()
+        self.quat_viewer.rotation_changed.connect(self._on_rotation_changed)
+        tab2_layout.addWidget(self.quat_viewer)
+
+        self.batch_editor = BatchEditor()
+        self.batch_editor.changes_committed.connect(self._on_batch_changes)
+        tab2_layout.addWidget(self.batch_editor)
+
+        tab2_layout.addStretch()
+        tabs.addTab(tab2, "Edit")
+
+        # Tab 3: Tools
+        tab3 = QWidget()
+        tab3_layout = QVBoxLayout(tab3)
+        tab3_layout.setAlignment(Qt.AlignTop)
+
+        self.size_filter = SizeFilterPanel()
+        self.size_filter.filter_changed.connect(self._on_size_filter_changed)
+        tab3_layout.addWidget(self.size_filter)
+
+        self.mesh_generator = MeshGeneratorPanel()
+        self.mesh_generator.generate_requested.connect(self._generate_mesh)
+        self.mesh_generator.clear_requested.connect(self._clear_mesh)
+        tab3_layout.addWidget(self.mesh_generator)
+
+        self.pattern_placer = PatternPlacerPanel()
+        self.pattern_placer.pattern_applied.connect(self._apply_pattern)
+        tab3_layout.addWidget(self.pattern_placer)
+
+        tab3_layout.addStretch()
+        tabs.addTab(tab3, "Tools")
+
+        # Visualization tab
+        tab4 = QWidget()
+        tab4_layout = QVBoxLayout(tab4)
+        tab4_layout.setAlignment(Qt.AlignTop)
+
+        viz_group = QGroupBox("Visualization")
+        viz_layout = QVBoxLayout(viz_group)
+
+        # Color mode
+        color_row = QHBoxLayout()
+        color_row.addWidget(QLabel("Color by:"))
+        self.color_mode = QComboBox()
+        self.color_mode.addItems(["Default", "By ID", "By Size", "By Height", "By Map"])
+        self.color_mode.currentTextChanged.connect(self._on_color_mode_changed)
+        color_row.addWidget(self.color_mode)
+        viz_layout.addLayout(color_row)
+
+        # Point size
+        size_row = QHBoxLayout()
+        size_row.addWidget(QLabel("Point Size:"))
+        self.point_size_slider = QSlider(Qt.Horizontal)
+        self.point_size_slider.setRange(2, 30)
+        self.point_size_slider.setValue(8)
+        self.point_size_slider.valueChanged.connect(self._on_point_size_changed)
+        size_row.addWidget(self.point_size_slider)
+        viz_layout.addLayout(size_row)
+
+        # Entity opacity
+        opacity_row = QHBoxLayout()
+        opacity_row.addWidget(QLabel("Opacity:"))
+        self.opacity_slider = QSlider(Qt.Horizontal)
+        self.opacity_slider.setRange(10, 100)
+        self.opacity_slider.setValue(70)
+        self.opacity_slider.valueChanged.connect(self._on_opacity_changed)
+        opacity_row.addWidget(self.opacity_slider)
+        viz_layout.addLayout(opacity_row)
+
+        tab4_layout.addWidget(viz_group)
+        tab4_layout.addStretch()
+        tabs.addTab(tab4, "View")
+
+        scroll.setWidget(tabs)
         right_layout.addWidget(scroll)
 
         splitter.addWidget(right_panel)
 
         # Set initial splitter sizes
-        splitter.setSizes([250, 900, 300])
+        splitter.setSizes([250, 850, 350])
 
     def _setup_menus(self):
         """Setup menu bar"""
@@ -839,6 +1526,12 @@ class KatamariEditorVispy(QMainWindow):
 
         # File menu
         file_menu = menubar.addMenu("File")
+
+        load_csv = QAction("Load CSV Database...", self)
+        load_csv.triggered.connect(self._load_csv_dialog)
+        file_menu.addAction(load_csv)
+
+        file_menu.addSeparator()
 
         open_action = QAction("Open DAT...", self)
         open_action.setShortcut(QKeySequence.Open)
@@ -870,6 +1563,18 @@ class KatamariEditorVispy(QMainWindow):
         undo_action.triggered.connect(self.undo)
         edit_menu.addAction(undo_action)
 
+        edit_menu.addSeparator()
+
+        select_all = QAction("Select All", self)
+        select_all.setShortcut(QKeySequence.SelectAll)
+        select_all.triggered.connect(self._select_all)
+        edit_menu.addAction(select_all)
+
+        deselect_all = QAction("Deselect All", self)
+        deselect_all.setShortcut("Escape")
+        deselect_all.triggered.connect(self._deselect_all)
+        edit_menu.addAction(deselect_all)
+
         # View menu
         view_menu = menubar.addMenu("View")
 
@@ -878,31 +1583,106 @@ class KatamariEditorVispy(QMainWindow):
         zoom_fit.triggered.connect(self._zoom_to_fit)
         view_menu.addAction(zoom_fit)
 
-    def _on_selection_changed(self, indices):
-        """Handle entity selection change"""
-        self.selected_indices = indices
-        self.vispy_canvas.update_selection(indices)
-        self.position_editor.update_for_selection(self.entities, indices)
+    def _load_csv_dialog(self):
+        """Open dialog to load CSV database"""
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Load CSV Database", "", "CSV Files (*.csv);;All Files (*)"
+        )
+        if not filepath:
+            return
 
-        if indices:
-            ent = self.entities[indices[-1]]
+        try:
+            with open(filepath, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                self.item_db = {}
+                for row in reader:
+                    key = row.get('index', '').lstrip('0') or '0'
+                    self.item_db[key] = row
+                    try:
+                        self.item_db[key]['size_val'] = float(row.get('size', 0))
+                    except:
+                        self.item_db[key]['size_val'] = 0.0
+
+            # Refresh entity list with new database
+            self.entity_list.set_entities(self.entities, self.item_db)
+            self._refresh_3d_view()
+            self.statusBar().showMessage(f"Loaded {len(self.item_db)} items from {os.path.basename(filepath)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load CSV: {e}")
+
+    def _set_select_mode(self, mode):
+        """Set selection mode"""
+        self.select_mode = mode
+        self.vispy_canvas.select_mode = mode
+
+    def _on_brush_size_changed(self, value):
+        """Update brush size"""
+        self.vispy_canvas.brush_size = value
+
+    def _on_size_scaling_changed(self, state):
+        """Toggle size scaling"""
+        self.use_size_scaling = state == Qt.Checked
+        self._refresh_3d_view()
+
+    def _on_entity_clicked(self, index, shift, ctrl):
+        """Handle entity click from 3D view"""
+        if shift or ctrl:
+            # Add to selection
+            if index not in self.selected_indices:
+                self.selected_indices.append(index)
+        else:
+            # Replace selection
+            self.selected_indices = [index]
+
+        self.entity_list.set_selection(self.selected_indices)
+        self._update_selection_ui()
+
+    def _on_selection_changed(self, indices):
+        """Handle entity selection change from list"""
+        self.selected_indices = indices
+        self._update_selection_ui()
+
+    def _update_selection_ui(self):
+        """Update all UI elements for current selection"""
+        self.vispy_canvas.update_selection(self.selected_indices)
+        self.position_editor.update_for_selection(self.entities, self.selected_indices)
+        self.pattern_placer.update_count(len(self.selected_indices))
+
+        if self.selected_indices:
+            ent = self.entities[self.selected_indices[-1]]
             self.entity_info.update_info(ent, self.item_db)
+            self.quat_viewer.update_quaternion(ent['rx'], ent['ry'], ent['rz'], ent['rw'])
+            self.batch_editor.update_for_selection(self.entities, self.selected_indices)
+
             db_key = ent['id'].lstrip('0') or '0'
             info = self.item_db.get(db_key, {})
             name = info.get('obj_en', f"Entity {ent['id']}")
-            self.statusBar().showMessage(f"Selected: {name} | ID: {ent['id']} | Pos: ({ent['x']:.1f}, {ent['y']:.1f}, {ent['z']:.1f})")
+            self.statusBar().showMessage(
+                f"Selected: {name} | ID: {ent['id']} | Pos: ({ent['x']:.1f}, {ent['y']:.1f}, {ent['z']:.1f})"
+            )
         else:
             self.entity_info.update_info(None)
+            self.quat_viewer.update_quaternion(0, 0, 0, 1)
+
+    def _select_all(self):
+        """Select all entities"""
+        self.selected_indices = list(range(len(self.entities)))
+        self.entity_list.set_selection(self.selected_indices)
+        self._update_selection_ui()
+
+    def _deselect_all(self):
+        """Deselect all entities"""
+        self.selected_indices = []
+        self.entity_list.set_selection([])
+        self._update_selection_ui()
 
     def _on_position_changed(self):
         """Handle position change from editor"""
         if not self.selected_indices:
             return
 
-        # Save undo state
         self._save_undo_state("Position Change")
 
-        # Get values
         x = -self.position_editor.spinboxes['X'].value()
         y = -self.position_editor.spinboxes['Y'].value()
         z = -self.position_editor.spinboxes['Z'].value()
@@ -921,17 +1701,83 @@ class KatamariEditorVispy(QMainWindow):
                 ent['y'] = y
                 ent['z'] = z
 
-            # Sync raw data
             self._sync_entity_raw(ent)
 
-        # Update display
-        self.vispy_canvas.set_entities(self.entities, self.selected_indices)
+        self._refresh_3d_view()
         self.statusBar().showMessage("Position updated")
+
+    def _on_rotation_changed(self, x, y, z, w):
+        """Handle rotation change from quaternion viewer"""
+        if not self.selected_indices:
+            QMessageBox.warning(self, "Selection", "Select at least one entity to rotate.")
+            return
+
+        self._save_undo_state("Apply Rotation")
+
+        for idx in self.selected_indices:
+            ent = self.entities[idx]
+            ent['rx'] = x
+            ent['ry'] = y
+            ent['rz'] = z
+            ent['rw'] = w
+            self._sync_entity_rotation(ent)
+
+        self._update_selection_ui()
+        QMessageBox.information(self, "Success", f"Applied rotation to {len(self.selected_indices)} entities.")
+
+    def _on_batch_changes(self, changes):
+        """Handle batch editor changes"""
+        if not self.selected_indices:
+            QMessageBox.warning(self, "Selection", "Select at least one entity to edit.")
+            return
+
+        self._save_undo_state("Batch Edit")
+
+        for idx in self.selected_indices:
+            ent = self.entities[idx]
+            for key, value in changes.items():
+                if key in ent:
+                    ent[key] = value
+            # TODO: Sync raw data for batch changes
+
+        self._update_selection_ui()
+        self.statusBar().showMessage(f"Updated {len(self.selected_indices)} entities")
+
+    def _on_size_filter_changed(self, min_size, max_size, enabled):
+        """Handle size filter change"""
+        if enabled:
+            self.entity_list.apply_size_filter(min_size, max_size, self.item_db)
+        else:
+            self.entity_list.set_entities(self.entities, self.item_db)
 
     def _zoom_to_fit(self):
         """Zoom camera to fit all entities"""
-        if self.entities:
-            self.vispy_canvas.set_entities(self.entities, self.selected_indices)
+        self._refresh_3d_view()
+
+    def _refresh_3d_view(self):
+        """Refresh the 3D view with current settings"""
+        if not self.entities:
+            return
+
+        # Get sizes for size scaling
+        sizes = None
+        if self.use_size_scaling:
+            sizes = []
+            for ent in self.entities:
+                db_key = ent['id'].lstrip('0') or '0'
+                # Exclude entity IDs 3226 and 3227 as outliers
+                if ent['id'].lstrip('0') in ['3226', '3227']:
+                    sizes.append(200)  # Default size for outliers
+                else:
+                    info = self.item_db.get(db_key, {})
+                    sizes.append(info.get('size_val', 0))
+
+        self.vispy_canvas.set_entities(
+            self.entities,
+            self.selected_indices,
+            sizes=sizes,
+            use_size_scaling=self.use_size_scaling
+        )
 
     def _on_color_mode_changed(self, mode):
         """Change entity coloring mode"""
@@ -944,15 +1790,14 @@ class KatamariEditorVispy(QMainWindow):
 
         n = len(self.entities)
         colors = np.zeros((n, 4), dtype=np.float32)
+        opacity = self.opacity_slider.value() / 100.0
 
         if mode == "Default":
-            colors[:] = [0.3, 0.7, 0.9, 0.7]
+            colors[:] = [0.3, 0.7, 0.9, opacity]
 
         elif mode == "By ID":
-            # Color by entity ID hash
             for i, ent in enumerate(self.entities):
                 id_hash = hash(ent['id']) % 360
-                # HSV to RGB (simplified)
                 h = id_hash / 60.0
                 c = 0.8
                 x = c * (1 - abs(h % 2 - 1))
@@ -968,19 +1813,14 @@ class KatamariEditorVispy(QMainWindow):
                     r, g, b = x, 0, c
                 else:
                     r, g, b = c, 0, x
-                colors[i] = [r, g, b, 0.8]
+                colors[i] = [r, g, b, opacity]
 
         elif mode == "By Size":
-            # Color by entity size from database
             sizes = []
             for ent in self.entities:
                 db_key = ent['id'].lstrip('0') or '0'
                 info = self.item_db.get(db_key, {})
-                try:
-                    size = float(info.get('size', 0))
-                except:
-                    size = 0
-                sizes.append(size)
+                sizes.append(info.get('size_val', 0))
 
             sizes = np.array(sizes)
             if sizes.max() > sizes.min():
@@ -988,36 +1828,31 @@ class KatamariEditorVispy(QMainWindow):
             else:
                 normalized = np.zeros(n)
 
-            # Blue (small) to Red (large)
             for i, val in enumerate(normalized):
-                colors[i] = [val, 0.3, 1 - val, 0.8]
+                colors[i] = [val, 0.3, 1 - val, opacity]
 
         elif mode == "By Height":
-            # Color by Y position (height)
             heights = np.array([e['y'] for e in self.entities])
             if heights.max() > heights.min():
                 normalized = (heights - heights.min()) / (heights.max() - heights.min())
             else:
                 normalized = np.zeros(n)
 
-            # Gradient from purple (low) to yellow (high)
             for i, val in enumerate(normalized):
-                colors[i] = [val, val, 1 - val, 0.8]
+                colors[i] = [val, val, 1 - val, opacity]
 
         elif mode == "By Map":
-            # Color each map differently
             map_colors = [
-                [0.3, 0.7, 0.9, 0.8],  # Blue
-                [0.9, 0.5, 0.3, 0.8],  # Orange
-                [0.4, 0.9, 0.4, 0.8],  # Green
-                [0.9, 0.3, 0.6, 0.8],  # Pink
-                [0.7, 0.7, 0.3, 0.8],  # Yellow
+                [0.3, 0.7, 0.9, opacity],
+                [0.9, 0.5, 0.3, opacity],
+                [0.4, 0.9, 0.4, opacity],
+                [0.9, 0.3, 0.6, opacity],
+                [0.7, 0.7, 0.3, opacity],
             ]
             for i, ent in enumerate(self.entities):
                 map_idx = ent.get('map_index', 0) % len(map_colors)
                 colors[i] = map_colors[map_idx]
 
-        # Update scatter colors
         self.vispy_canvas.scatter.set_data(
             pos=positions,
             face_color=colors,
@@ -1030,8 +1865,246 @@ class KatamariEditorVispy(QMainWindow):
     def _on_point_size_changed(self, size):
         """Change entity point size"""
         if self.vispy_canvas.entity_positions is not None:
-            # Re-apply current color mode with new size
             self._on_color_mode_changed(self.color_mode.currentText())
+
+    def _on_opacity_changed(self, value):
+        """Change entity opacity"""
+        if self.vispy_canvas.entity_positions is not None:
+            self._on_color_mode_changed(self.color_mode.currentText())
+
+    def _generate_mesh(self, params):
+        """Generate mesh from entity positions"""
+        try:
+            from scipy.interpolate import griddata
+            from scipy.spatial import Delaunay
+        except ImportError:
+            QMessageBox.critical(self, "Error", "scipy is required for mesh generation. Install with: pip install scipy")
+            return
+
+        if not self.entities:
+            QMessageBox.warning(self, "Error", "No entities loaded.")
+            return
+
+        # Get indices to use
+        if params['selected_only']:
+            if not self.selected_indices:
+                QMessageBox.warning(self, "Error", "No entities selected.")
+                return
+            indices = self.selected_indices.copy()
+        else:
+            indices = list(range(len(self.entities)))
+
+        # Filter by size
+        if params['exclude_large']:
+            filtered = []
+            for i in indices:
+                db_key = self.entities[i]['id'].lstrip('0') or '0'
+                size = self.item_db.get(db_key, {}).get('size_val', 0)
+                if size <= 9000000:
+                    filtered.append(i)
+            indices = filtered
+
+        if len(indices) < 4:
+            QMessageBox.warning(self, "Error", "Need at least 4 entities to generate mesh.")
+            return
+
+        # Collect points
+        points = np.array([[self.entities[i]['x'], self.entities[i]['y'], self.entities[i]['z']] for i in indices])
+
+        # Average points
+        if params['averaging'] > 0.5:
+            points = self._average_points(points, params['averaging'])
+
+        if len(points) < 4:
+            QMessageBox.warning(self, "Error", "Too few points after averaging.")
+            return
+
+        resolution = params['resolution']
+        alpha = params['alpha']
+
+        try:
+            if params['floor_priority']:
+                # Floor mesh: XZ plane, interpolate Y
+                x = points[:, 0]
+                y = points[:, 1]
+                z = points[:, 2]
+
+                xi = np.linspace(x.min(), x.max(), resolution)
+                zi = np.linspace(z.min(), z.max(), resolution)
+                Xi, Zi = np.meshgrid(xi, zi)
+
+                Yi = griddata((x, z), y, (Xi, Zi), method='linear', fill_value=np.nan)
+
+                # Create mesh vertices and faces
+                vertices = []
+                faces = []
+
+                for i in range(resolution):
+                    for j in range(resolution):
+                        if not np.isnan(Yi[i, j]):
+                            vertices.append([-Xi[i, j], Zi[i, j], Yi[i, j]])
+
+                vertices = np.array(vertices, dtype=np.float32)
+
+                # Create faces from grid
+                valid_idx = {}
+                idx = 0
+                for i in range(resolution):
+                    for j in range(resolution):
+                        if not np.isnan(Yi[i, j]):
+                            valid_idx[(i, j)] = idx
+                            idx += 1
+
+                for i in range(resolution - 1):
+                    for j in range(resolution - 1):
+                        if (i, j) in valid_idx and (i+1, j) in valid_idx and \
+                           (i, j+1) in valid_idx and (i+1, j+1) in valid_idx:
+                            v00 = valid_idx[(i, j)]
+                            v10 = valid_idx[(i+1, j)]
+                            v01 = valid_idx[(i, j+1)]
+                            v11 = valid_idx[(i+1, j+1)]
+                            faces.append([v00, v10, v11])
+                            faces.append([v00, v11, v01])
+
+                faces = np.array(faces, dtype=np.uint32)
+
+            else:
+                # General mesh using Delaunay
+                tri = Delaunay(points[:, [0, 2]])  # XZ projection
+
+                # Transform vertices for display
+                vertices = np.array([[-p[0], p[2], p[1]] for p in points], dtype=np.float32)
+                faces = tri.simplices.astype(np.uint32)
+
+            self.vispy_canvas.set_mesh(vertices, faces, color=(0.5, 0.8, 0.5, alpha))
+            self.statusBar().showMessage(f"Mesh generated from {len(points)} points")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to generate mesh: {e}")
+
+    def _average_points(self, points, cell_size):
+        """Average nearby points"""
+        if len(points) == 0:
+            return points
+
+        x_min, y_min, z_min = points.min(axis=0)
+
+        cells = {}
+        for p in points:
+            cx = int((p[0] - x_min) / cell_size)
+            cy = int((p[1] - y_min) / cell_size)
+            cz = int((p[2] - z_min) / cell_size)
+            key = (cx, cy, cz)
+
+            if key not in cells:
+                cells[key] = []
+            cells[key].append(p)
+
+        averaged = []
+        for cell_points in cells.values():
+            avg_point = np.mean(cell_points, axis=0)
+            averaged.append(avg_point)
+
+        return np.array(averaged)
+
+    def _clear_mesh(self):
+        """Clear the generated mesh"""
+        self.vispy_canvas.clear_mesh()
+        self.statusBar().showMessage("Mesh cleared")
+
+    def _apply_pattern(self, pattern_type, params):
+        """Apply pattern to selected entities"""
+        if pattern_type == "add_waypoint":
+            # Add waypoint from selection
+            if not self.selected_indices:
+                QMessageBox.warning(self, "Selection", "Select at least one entity to use as waypoint.")
+                return
+            x_avg = sum(self.entities[i]['x'] for i in self.selected_indices) / len(self.selected_indices)
+            y_avg = sum(self.entities[i]['y'] for i in self.selected_indices) / len(self.selected_indices)
+            z_avg = sum(self.entities[i]['z'] for i in self.selected_indices) / len(self.selected_indices)
+            self.pattern_placer.add_waypoint(x_avg, y_avg, z_avg)
+            return
+
+        if not self.selected_indices:
+            QMessageBox.warning(self, "Selection", "Select entities to arrange in pattern.")
+            return
+
+        count = len(self.selected_indices)
+
+        if pattern_type == "Path" and len(params['waypoints']) < 2:
+            QMessageBox.warning(self, "Waypoints", "Path mode requires at least 2 waypoints.")
+            return
+
+        self._save_undo_state(f"Apply {pattern_type} Pattern")
+
+        # Calculate center
+        center_x = sum(self.entities[i]['x'] for i in self.selected_indices) / count
+        center_y = sum(self.entities[i]['y'] for i in self.selected_indices) / count
+        center_z = sum(self.entities[i]['z'] for i in self.selected_indices) / count
+
+        if pattern_type == "Circle":
+            radius = params['radius']
+            for idx, entity_idx in enumerate(self.selected_indices):
+                angle = (2 * math.pi * idx) / count
+                self.entities[entity_idx]['x'] = center_x + radius * math.cos(angle)
+                self.entities[entity_idx]['z'] = center_z + radius * math.sin(angle)
+                self.entities[entity_idx]['y'] = center_y
+                self._sync_entity_raw(self.entities[entity_idx])
+
+        elif pattern_type == "Line":
+            spacing = params['spacing']
+            start_offset = -(count - 1) * spacing / 2
+
+            for idx, entity_idx in enumerate(self.selected_indices):
+                self.entities[entity_idx]['x'] = center_x + start_offset + (idx * spacing)
+                self.entities[entity_idx]['y'] = center_y
+                self.entities[entity_idx]['z'] = center_z
+                self._sync_entity_raw(self.entities[entity_idx])
+
+        elif pattern_type == "Path":
+            waypoints = params['waypoints']
+            spacing = params['spacing']
+
+            # Calculate total path length
+            total_length = 0
+            for i in range(len(waypoints) - 1):
+                dx = waypoints[i+1][0] - waypoints[i][0]
+                dy = waypoints[i+1][1] - waypoints[i][1]
+                dz = waypoints[i+1][2] - waypoints[i][2]
+                total_length += math.sqrt(dx*dx + dy*dy + dz*dz)
+
+            # Distribute entities along path
+            for idx, entity_idx in enumerate(self.selected_indices):
+                t = idx / max(1, count - 1)
+                target_dist = t * total_length
+
+                # Find position along path
+                current_dist = 0
+                for i in range(len(waypoints) - 1):
+                    dx = waypoints[i+1][0] - waypoints[i][0]
+                    dy = waypoints[i+1][1] - waypoints[i][1]
+                    dz = waypoints[i+1][2] - waypoints[i][2]
+                    seg_len = math.sqrt(dx*dx + dy*dy + dz*dz)
+
+                    if current_dist + seg_len >= target_dist:
+                        # Interpolate within this segment
+                        seg_t = (target_dist - current_dist) / seg_len if seg_len > 0 else 0
+                        self.entities[entity_idx]['x'] = waypoints[i][0] + dx * seg_t
+                        self.entities[entity_idx]['y'] = waypoints[i][1] + dy * seg_t
+                        self.entities[entity_idx]['z'] = waypoints[i][2] + dz * seg_t
+                        break
+                    current_dist += seg_len
+                else:
+                    # Place at last waypoint
+                    self.entities[entity_idx]['x'] = waypoints[-1][0]
+                    self.entities[entity_idx]['y'] = waypoints[-1][1]
+                    self.entities[entity_idx]['z'] = waypoints[-1][2]
+
+                self._sync_entity_raw(self.entities[entity_idx])
+
+        self._refresh_3d_view()
+        self._update_selection_ui()
+        self.statusBar().showMessage(f"Applied {pattern_type} pattern to {count} entities")
 
     # ============== File Operations ==============
 
@@ -1160,7 +2233,7 @@ class KatamariEditorVispy(QMainWindow):
 
         # Update displays
         self.entity_list.set_entities(self.entities, self.item_db)
-        self.vispy_canvas.set_entities(self.entities, [])
+        self._refresh_3d_view()
 
         self.statusBar().showMessage(f"Loaded {map_name}: {len(map_entities)} entities")
 
@@ -1255,6 +2328,32 @@ class KatamariEditorVispy(QMainWindow):
             final_block = reconstructed[:ei-si].ljust(ei-si)
             ent['raw'] = ent['raw'][:si] + final_block + ent['raw'][ei:]
 
+    def _sync_entity_rotation(self, ent):
+        """Sync rotation values back to raw entity data"""
+        if len(ent['r_indices']) != 4:
+            return
+
+        original_content = ent['r_raw_content']
+        new_parts = []
+        last_idx = 0
+        ax_keys = ['rx', 'ry', 'rz', 'rw']
+
+        for i in range(4):
+            start, end = ent['r_indices'][i]
+            new_parts.append(original_content[last_idx:start])
+            new_parts.append(self._format_strict(ent[ax_keys[i]], end - start))
+            last_idx = end
+        new_parts.append(original_content[last_idx:])
+
+        ent['r_raw_content'] = "".join(new_parts)
+
+        s, e = "<roll>", "</roll>"
+        si = ent['raw'].find(s) + len(s)
+        ei = ent['raw'].find(e)
+        if si != -1 and ei != -1:
+            final_block = ent['r_raw_content'][:ei-si].ljust(ei-si)
+            ent['raw'] = ent['raw'][:si] + final_block + ent['raw'][ei:]
+
     def save_all_maps(self):
         """Save all loaded maps"""
         if not self.loaded_maps:
@@ -1306,7 +2405,7 @@ class KatamariEditorVispy(QMainWindow):
 
         # Update displays
         self.entity_list.set_entities(self.entities, self.item_db)
-        self.vispy_canvas.set_entities(self.entities, self.selected_indices)
+        self._refresh_3d_view()
 
         self.statusBar().showMessage(f"Undid: {state['action']}")
 
