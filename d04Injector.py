@@ -11,7 +11,7 @@ KNOWN FILE STRUCTURE (hex offsets):
 - <SDataSet> (lighting):        0x1B7817 to 0x1B9080
 - Warp info:                    0x298017 to 0x2A9958
 
-Level order (84 total, index 0 is unused):
+Level order (149 total, index 0 is unused):
 UNUSED, TUTORIAL, BIG-1_A, BIG-2_A, BIG-2_B, BIG-2_C, BIG-3_A, BIG-3_B, BIG-3_C,
 BIG-4_A, BIG-4_B, BIG-4_C, BIG-4_D, BIG-4_TIME, BIG-5_A, BIG-5_B, BIG-5_C, BIG-5_D,
 BIG-5_TIME, BIG-6_A, BIG-6_B, BIG-6_C, BIG-6_D, BIG-6_TIME, BIG-7_A, BIG-7_B,
@@ -22,7 +22,8 @@ JUSTSIZE-3_A, OUSAMA_A, OUSAMA_B, OUSAMA_C, OUSAMA_D, OUSAMA_E, OUSAMA_F, OUSAMA
 OUSAMA_H, OUSAMA_I, OUSAMA_J, BIG-10_A, BIG-10_B, BIG-11_A, BIG-11_B, BIG-11_C,
 JOIN-A-1_A, JOIN-A-1_B, JOIN-A-1_C, JOIN-A-1_TIME, JOIN-A-2_A, JOIN-A-2_B,
 JOIN-A-2_C, JOIN-A-2_D, JOIN-A-2_TIME, JOIN-A-3_A, JOIN-A-3_B, JOIN-A-3_C,
-JOIN-A-3_D, JOIN-A-3_E, SELECTMAP_A
+JOIN-A-3_D, JOIN-A-3_E, VS-1_A, VS-2_A, VS-3_A, ONLINE-A-4_A, ONLINE-A-5_A,
+[87-147: Reserved/Unused], SELECTMAP_A (index 148)
 """
 
 import tkinter as tk
@@ -170,24 +171,57 @@ SMIDATA_PARAMS = {
     "s8AreaChange": {"desc": "Area change table (3 values)", "type": "str"},
 }
 
-# Level names (index 0 = UNUSED, then 1-83)
+# Level names matching actual d04.dat order by file size
 LEVEL_NAMES = [
-    "UNUSED",  # Index 0
-    "TUTORIAL", "BIG-1_A", "BIG-2_A", "BIG-2_B", "BIG-2_C", "BIG-3_A", "BIG-3_B", "BIG-3_C",
-    "BIG-4_A", "BIG-4_B", "BIG-4_C", "BIG-4_D", "BIG-4_TIME", "BIG-5_A", "BIG-5_B", "BIG-5_C",
-    "BIG-5_D", "BIG-5_TIME", "BIG-6_A", "BIG-6_B", "BIG-6_C", "BIG-6_D", "BIG-6_TIME",
-    "BIG-7_A", "BIG-7_B", "BIG-8_A", "BIG-8_B", "BIG-8_C", "BIG-8_D", "BIG-8_E",
+    "TEST_A UNUSED",  # Index 0 (113,460 bytes)
+    # Main campaign levels (1-22)
+    "TUTORIAL_A", "BIG-1_A", "BIG-2_A", "BIG-2_B", "BIG-2_C", "BIG-3_A", "BIG-3_B", "BIG-3_C",
+    "BIG-4_A", "BIG-4_B", "BIG-4_C", "BIG-4_D", "BIG-5_A", "BIG-5_B", "BIG-5_C", "BIG-5_D",
+    "BIG-6_A", "BIG-6_B", "BIG-6_C", "BIG-6_D", "BIG-7_A", "BIG-7_B",
+    # Index 23 - Unused slot
+    "BIG-7_C UNUSED",
+    # More campaign levels (24-36)
+    "BIG-8_A", "BIG-8_B", "BIG-8_C", "BIG-8_D", "BIG-8_E",
     "BIG-9_A", "BIG-9_B", "BIG-9_C", "BIG-9_D", "BIG-9_E", "BIG-9_F", "BIG-9_G", "BIG-9_H",
-    "FOOD_A", "HOT_A", "HOT_B", "CAR_A", "CAR_B", "CAR_TIME",
-    "SHOPPING_A", "DRESS_A", "SEIZA_A", "SEIZA_C", "SEIZA_TIME",
+    # Special stages (37-49)
+    "FOOD_A", "FOOD_B UNUSED", "FOOD_C UNUSED", "HOT_TIME UNUSED",
+    "HOT_A", "HOT_B", "CAR_A", "CAR_B",
+    "SHOPPING_A", "DRESS_A", "SEIZA_A", "SEIZA_B UNUSED", "SEIZA_C",
+    # Just Size stages (50-52)
     "JUSTSIZE-1_A", "JUSTSIZE-2_A", "JUSTSIZE-3_A",
-    "OUSAMA_A", "OUSAMA_B", "OUSAMA_C", "OUSAMA_D", "OUSAMA_E", "OUSAMA_F", "OUSAMA_G",
-    "OUSAMA_H", "OUSAMA_I", "OUSAMA_J",
-    "BIG-10_A", "BIG-10_B", "BIG-11_A", "BIG-11_B", "BIG-11_C",
-    "JOIN-A-1_A", "JOIN-A-1_B", "JOIN-A-1_C", "JOIN-A-1_TIME",
-    "JOIN-A-2_A", "JOIN-A-2_B", "JOIN-A-2_C", "JOIN-A-2_D", "JOIN-A-2_TIME",
+    # Ousama (King) stages (53-62)
+    "OUSAMA_A", "OUSAMA_B", "OUSAMA_C", "OUSAMA_D", "OUSAMA_E",
+    "OUSAMA_F", "OUSAMA_G", "OUSAMA_H", "OUSAMA_I", "OUSAMA_J",
+    # VS Local stages (63-65)
+    "VS-1_A", "VS-2_A", "VS-3_A",
+    # Co-Op Stage 1 (66-69)
+    "JOIN-A-1_A", "JOIN-A-1_B", "JOIN-A-1_C", "JOIN-A-1_TIME UNUSED",
+    # Co-Op Stage 2 (70-73)
+    "JOIN-A-2_A", "JOIN-A-2_B", "JOIN-A-2_C", "JOIN-A-2_D",
+    # Co-Op Stage 3 (74-79)
     "JOIN-A-3_A", "JOIN-A-3_B", "JOIN-A-3_C", "JOIN-A-3_D", "JOIN-A-3_E",
-    "SELECTMAP_A"
+    "JOIN-A-3_TIME UNUSED",
+    # Unused Co-Op slots (80-81)
+    "JOIN-B-1_A UNUSED", "JOIN-B-2_A UNUSED",
+    # Online VS stages (82-86)
+    "ONLINE-A-1_A", "ONLINE-A-2_A", "ONLINE-A-3_A", "ONLINE-A-4_A", "ONLINE-A-5_A",
+    # Unused Online slots (87-91)
+    "ONLINE-B-1_A UNUSED", "ONLINE-B-2_A UNUSED", "ONLINE-B-3_A UNUSED", "ONLINE-B-4_A UNUSED", "ONLINE-B-5_A UNUSED",
+    # BIG-10 stages (92-93)
+    "BIG-10_A", "BIG-10_B",
+    # Unused slots (94-99)
+    "BIG-10_C UNUSED", "BIG-10_D UNUSED", "BIG-10_TIME UNUSED",
+    "BIG-11_TIME UNUSED", "CAR_TIME UNUSED", "BIG-4_TIME UNUSED",
+    # BIG-11 stages (100-103)
+    "BIG-11_A", "BIG-11_B", "BIG-11_C UNUSED", "BIG-11_C",
+    # More unused slots (104-128)
+    *[f"UNUSED_SLOT_{i}" for i in range(104, 129)],
+    # Extra stages (129-131) - These are actual files with unique sizes
+    "EXTRA_1_A", "EXTRA_2_A", "EXTRA-3_A",
+    # More unused slots (132-147)
+    *[f"UNUSED_SLOT_{i}" for i in range(132, 148)],
+    # Selection map and cosmos (148-149)
+    "SELECTMAP_A", "COSMOS_A"
 ]
 
 EXPECTED_FILE_SIZE = 1629420 * 1024  # 1,668,526,080 bytes
